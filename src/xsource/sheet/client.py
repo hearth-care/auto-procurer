@@ -66,3 +66,89 @@ class SheetClient:
                 sendNotificationEmail=False,
             ).execute()
         return sid, url
+
+    def mark_asked(self, sheet_id: str, *, rank: int, asked_at, updated_at) -> None:
+        row = rank + 1
+        self.sheets.spreadsheets().values().batchUpdate(
+            spreadsheetId=sheet_id,
+            body={
+                "valueInputOption": "USER_ENTERED",
+                "data": [
+                    {
+                        "range": f"H{row}:M{row}",
+                        "values": [
+                            [
+                                "Asked",
+                                asked_at.strftime("%Y-%m-%d %H:%M"),
+                                "",
+                                "",
+                                "",
+                                updated_at.strftime("%Y-%m-%d %H:%M"),
+                            ]
+                        ],
+                    }
+                ],
+            },
+        ).execute()
+
+    def write_reply(self, sheet_id: str, *, rank: int, parsed, received_at, updated_at) -> None:
+        row = rank + 1
+        status = {"quoted": "Quoted", "replied": "Replied", "no": "No"}.get(
+            parsed.status, parsed.status.title()
+        )
+        self.sheets.spreadsheets().values().batchUpdate(
+            spreadsheetId=sheet_id,
+            body={
+                "valueInputOption": "USER_ENTERED",
+                "data": [
+                    {
+                        "range": f"H{row}:M{row}",
+                        "values": [
+                            [
+                                status,
+                                received_at.strftime("%Y-%m-%d %H:%M"),
+                                parsed.summary,
+                                "" if parsed.quote_amount is None else str(parsed.quote_amount),
+                                "",
+                                updated_at.strftime("%Y-%m-%d %H:%M"),
+                            ]
+                        ],
+                    }
+                ],
+            },
+        ).execute()
+
+    def update_heartbeat(self, sheet_id: str, checked_at) -> None:
+        self.sheets.spreadsheets().values().update(
+            spreadsheetId=sheet_id,
+            range="A1",
+            valueInputOption="USER_ENTERED",
+            body={"values": [[f"xsource last checked {checked_at.strftime('%Y-%m-%d %H:%M')}"]]},
+        ).execute()
+
+    def read_request_rows(self, sheet_id: str) -> list[dict[str, str | int]]:
+        values = (
+            self.sheets.spreadsheets()
+            .values()
+            .get(spreadsheetId=sheet_id, range="A:N")
+            .execute()
+            .get("values", [])
+        )
+        if not values:
+            return []
+        header = values[0]
+        index = {name: idx for idx, name in enumerate(header)}
+        rows = []
+        for raw in values[1:]:
+            if not raw or not str(raw[0]).isdigit():
+                continue
+            rows.append(
+                {
+                    "rank": int(raw[index["#"]]),
+                    "status": raw[index["Status"]] if len(raw) > index["Status"] else "",
+                    "quote": raw[index["Quote £"]] if len(raw) > index["Quote £"] else "",
+                    "chosen": raw[index["Chosen"]] if len(raw) > index["Chosen"] else "",
+                    "notes": raw[index["Notes"]] if len(raw) > index["Notes"] else "",
+                }
+            )
+        return rows
