@@ -14,7 +14,9 @@ import sys
 import typer
 
 from xsource.cli.cockpit import run_cockpit, serve_agent
+from xsource.cli.request import request_app
 from xsource.cli.signals import signals_app
+from xsource.cli.watcher import watcher_app
 
 app = typer.Typer(
     name="xsource",
@@ -22,6 +24,8 @@ app = typer.Typer(
     no_args_is_help=False,  # bare invocation opens the cockpit (or prints help off-TTY)
 )
 app.add_typer(signals_app, name="signals")
+app.add_typer(watcher_app, name="watcher")
+app.add_typer(request_app, name="request")
 
 
 @app.callback(invoke_without_command=True)
