@@ -53,7 +53,9 @@ def search_places(
             Candidate(
                 name=place.get("displayName", {}).get("text", "").strip() or "(unnamed)",
                 source="places",
-                source_url=f"https://www.google.com/maps/place/?q=place_id:{place_id}" if place_id else None,
+                source_url=f"https://www.google.com/maps/place/?q=place_id:{place_id}"
+                if place_id
+                else None,
                 phone=normalise_uk_phone(place.get("nationalPhoneNumber") or ""),
                 website=_domain(place.get("websiteUri")),
                 address=place.get("formattedAddress"),

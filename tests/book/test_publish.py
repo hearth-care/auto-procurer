@@ -34,5 +34,14 @@ def test_directory_values():
         "Last price",
         "Notes",
     ]
-    assert rows[1] == ["A", "heating", "+447700900123", "—", "yes", "2026-01-05", "£180 (boiler service)", "—"]
+    assert rows[1] == [
+        "A",
+        "heating",
+        "+447700900123",
+        "—",
+        "yes",
+        "2026-01-05",
+        "£180 (boiler service)",
+        "—",
+    ]
     assert rows[2] == ["B", "—", "—", "—", "", "—", "—", "—"]

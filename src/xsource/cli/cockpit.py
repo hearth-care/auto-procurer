@@ -60,7 +60,12 @@ def _status() -> dict:
 
 
 def _store_online(suppliers, requests_) -> bool:
-    return suppliers is not None and requests_ is not None and not suppliers.offline and not requests_.offline
+    return (
+        suppliers is not None
+        and requests_ is not None
+        and not suppliers.offline
+        and not requests_.offline
+    )
 
 
 def _preconditions(ctx: WizardContext) -> list[Precondition]:
@@ -89,7 +94,9 @@ def _preconditions(ctx: WizardContext) -> list[Precondition]:
         Precondition(
             "Store reachable",
             _store_online(suppliers, requests_),
-            "GCS store available" if _store_online(suppliers, requests_) else "offline read-only cache",
+            "GCS store available"
+            if _store_online(suppliers, requests_)
+            else "offline read-only cache",
         ),
         Precondition("Research budget", budget.allow_new_run(), budget.level()),
         Precondition("Home postcode", bool(cfg.home_postcode), cfg.home_postcode or "missing"),
@@ -104,7 +111,10 @@ def _need_step(ctx: WizardContext, bag: dict) -> StepResult:
         ok=True,
         data={
             "raw_need": raw_need,
-            "constraints": {"radius_miles": Config.from_env().default_radius_miles, "needed_by": None},
+            "constraints": {
+                "radius_miles": Config.from_env().default_radius_miles,
+                "needed_by": None,
+            },
         },
     )
 
@@ -132,7 +142,10 @@ class _AnthropicStructuredGateway:
         )
         for block in resp.content:
             block_any = cast(Any, block)
-            if getattr(block_any, "type", None) == "tool_use" and getattr(block_any, "name", None) == "report":
+            if (
+                getattr(block_any, "type", None) == "tool_use"
+                and getattr(block_any, "name", None) == "report"
+            ):
                 return cast(dict, block_any.input)
         raise RuntimeError(f"{role} model returned no report tool call")
 
@@ -216,7 +229,10 @@ def _review_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     )
     return StepResult(
         ok=True,
-        data={"summary": f"Created {request.id}.", "result_links": [("Sheet", request.sheet_url or "")]},
+        data={
+            "summary": f"Created {request.id}.",
+            "result_links": [("Sheet", request.sheet_url or "")],
+        },
     )
 
 
@@ -249,10 +265,34 @@ def register_all() -> None:
         )
     )
     for key, shelf, title, summary, cli in (
-        ("request.list", "B", "List requests", "Show open and recent procurement requests.", "xsource request list"),
-        ("book.search", "C", "Search black book", "Search saved suppliers by name, category, or tag.", "xsource book search"),
-        ("book.import", "C", "Import black book", "Seed the supplier store from CSV.", "xsource book import"),
-        ("book.publish", "D", "Publish staff directory", "Regenerate the read-only staff supplier directory.", "xsource book publish"),
+        (
+            "request.list",
+            "B",
+            "List requests",
+            "Show open and recent procurement requests.",
+            "xsource request list",
+        ),
+        (
+            "book.search",
+            "C",
+            "Search black book",
+            "Search saved suppliers by name, category, or tag.",
+            "xsource book search",
+        ),
+        (
+            "book.import",
+            "C",
+            "Import black book",
+            "Seed the supplier store from CSV.",
+            "xsource book import",
+        ),
+        (
+            "book.publish",
+            "D",
+            "Publish staff directory",
+            "Regenerate the read-only staff supplier directory.",
+            "xsource book publish",
+        ),
     ):
         register_capability(
             CapabilitySpec(
@@ -396,7 +436,9 @@ def doctor_build_probes(report: object) -> list[Probe]:
             name="Sheets token",
             level="ok" if sheets_token and Path(sheets_token).exists() else "error",
             detail=sheets_token or "missing",
-            fix=Fix("Set XSOURCE_SHEETS_TOKEN_PATH", "export XSOURCE_SHEETS_TOKEN_PATH=...", run=None),
+            fix=Fix(
+                "Set XSOURCE_SHEETS_TOKEN_PATH", "export XSOURCE_SHEETS_TOKEN_PATH=...", run=None
+            ),
         ),
         Probe(
             name="Store",

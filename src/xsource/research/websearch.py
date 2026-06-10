@@ -62,11 +62,16 @@ class AnthropicSearcher:
                 },
             ],
             tool_choice={"type": "auto"},
-            messages=[{"role": "user", "content": f"Query: {query}\nWhen done searching, call report."}],
+            messages=[
+                {"role": "user", "content": f"Query: {query}\nWhen done searching, call report."}
+            ],
         )
         for block in resp.content:
             block_any = cast(Any, block)
-            if getattr(block_any, "type", None) == "tool_use" and getattr(block_any, "name", None) == "report":
+            if (
+                getattr(block_any, "type", None) == "tool_use"
+                and getattr(block_any, "name", None) == "report"
+            ):
                 return cast(dict, block_any.input)
         log.warning("websearch returned no report tool call for %r", query)
         return {"candidates": []}

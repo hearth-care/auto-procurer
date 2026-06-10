@@ -85,7 +85,5 @@ class Request:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Request:
         filtered = dict(_filtered(cls, d))
-        filtered["shortlist"] = [
-            ShortlistEntry.from_dict(e) for e in filtered.get("shortlist", [])
-        ]
+        filtered["shortlist"] = [ShortlistEntry.from_dict(e) for e in filtered.get("shortlist", [])]
         return cls(**filtered)

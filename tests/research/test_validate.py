@@ -22,7 +22,10 @@ def test_valid_yell_candidate_passes():
 
 
 def test_wrong_domain_is_dropped():
-    assert validate_directory_candidate({**RAW, "profile_url": "https://evil.com/x"}, site="yell.com") is None
+    assert (
+        validate_directory_candidate({**RAW, "profile_url": "https://evil.com/x"}, site="yell.com")
+        is None
+    )
 
 
 def test_missing_profile_url_is_dropped():

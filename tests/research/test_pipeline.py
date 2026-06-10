@@ -38,7 +38,11 @@ def test_pipeline_merges_sources_and_respects_caps():
         shortlist_n=5,
     )
     assert calls["places"] == 1 and calls["dir"] == 2
-    assert {c.name for c in result.shortlist} == {"From Places", "From yell.com", "From checkatrade.com"}
+    assert {c.name for c in result.shortlist} == {
+        "From Places",
+        "From yell.com",
+        "From checkatrade.com",
+    }
     assert result.indicative == {"low": 100, "high": 300, "sources": 2, "note": ""}
     assert result.stages["places"] == "ok" and result.stages["directories"] == "ok"
 
@@ -90,7 +94,11 @@ def test_book_matches_rank_first():
     book = Candidate(name="Old Friend", source="book", rating=4.9, review_count=31, rating_scale=5)
 
     def places_fn(term):
-        return [Candidate(name="Shiny New", source="places", rating=4.9, review_count=500, rating_scale=5)]
+        return [
+            Candidate(
+                name="Shiny New", source="places", rating=4.9, review_count=500, rating_scale=5
+            )
+        ]
 
     result = run_research(
         TRIAGE,

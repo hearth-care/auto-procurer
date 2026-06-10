@@ -19,8 +19,12 @@ _BUCKET = "clonway-orchestrator-eu-west2"
 
 def build_stores(cfg: Config) -> tuple[SyncedStore, SyncedStore]:
     base = Path(cfg.state_dir)
-    suppliers = SyncedStore(base, "suppliers.jsonl", Supplier, make_blob(_BUCKET, "state/xsource/suppliers.jsonl"))
-    requests_ = SyncedStore(base, "requests.jsonl", Request, make_blob(_BUCKET, "state/xsource/requests.jsonl"))
+    suppliers = SyncedStore(
+        base, "suppliers.jsonl", Supplier, make_blob(_BUCKET, "state/xsource/suppliers.jsonl")
+    )
+    requests_ = SyncedStore(
+        base, "requests.jsonl", Request, make_blob(_BUCKET, "state/xsource/requests.jsonl")
+    )
     return suppliers, requests_
 
 
@@ -46,4 +50,6 @@ def build_research_fns(cfg: Config):
 
 
 def _places(cfg: Config, key: str, term: str):
-    return places.search_places(term, cfg.home_postcode or "", cfg.default_radius_miles, api_key=key)
+    return places.search_places(
+        term, cfg.home_postcode or "", cfg.default_radius_miles, api_key=key
+    )

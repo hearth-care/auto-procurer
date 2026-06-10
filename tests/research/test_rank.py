@@ -53,7 +53,9 @@ def test_dedupe_merges_by_fuzzy_name():
 
 
 def test_distinct_candidates_survive():
-    assert len(dedupe([C(name="A", phone="+441000000001"), C(name="B", phone="+441000000002")])) == 2
+    assert (
+        len(dedupe([C(name="A", phone="+441000000001"), C(name="B", phone="+441000000002")])) == 2
+    )
 
 
 def test_rank_book_first_then_rating_volume():

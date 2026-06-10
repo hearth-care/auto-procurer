@@ -21,9 +21,11 @@ def import_csv(path: Path, store: JsonlStore, today: str) -> dict[str, int]:
             if name.lower() in existing:
                 skipped += 1
                 continue
-            notes = [
-                {"date": today, "by": "import", "text": row["notes"].strip()}
-            ] if (row.get("notes") or "").strip() else []
+            notes = (
+                [{"date": today, "by": "import", "text": row["notes"].strip()}]
+                if (row.get("notes") or "").strip()
+                else []
+            )
             store.upsert(
                 Supplier(
                     id=store.next_id("s"),

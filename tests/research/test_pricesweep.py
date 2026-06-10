@@ -21,7 +21,12 @@ def test_price_range_with_sources():
         }
     )
     result = sweep_prices("tree removal", "Devon", searcher=searcher)
-    assert result == {"low": 150, "high": 400, "sources": 3, "note": "regional typical for tree removal"}
+    assert result == {
+        "low": 150,
+        "high": 400,
+        "sources": 3,
+        "note": "regional typical for tree removal",
+    }
 
 
 def test_no_data_returns_none_never_invented():

@@ -51,4 +51,11 @@ def test_cockpit_opens_three_region_shell() -> None:
 def test_cockpit_registers_p1_capabilities_and_doctor() -> None:
     cockpit.register_all()
     registered = {s.key for s in registry.get_capabilities()}
-    assert {"request.new", "request.list", "book.search", "book.import", "book.publish", "doctor"} <= registered
+    assert {
+        "request.new",
+        "request.list",
+        "book.search",
+        "book.import",
+        "book.publish",
+        "doctor",
+    } <= registered

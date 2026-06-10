@@ -11,7 +11,10 @@ from xsource.store.models import Request, ShortlistEntry, Supplier
 
 
 def build_shortlist_rows(cands: list[Candidate]) -> list[dict]:
-    return [{"candidate": candidate, "mode": "email" if candidate.email else "call"} for candidate in cands]
+    return [
+        {"candidate": candidate, "mode": "email" if candidate.email else "call"}
+        for candidate in cands
+    ]
 
 
 def _upsert_supplier(suppliers, candidate: Candidate, today: str) -> str:

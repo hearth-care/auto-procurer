@@ -28,4 +28,9 @@ def sweep_prices(job_term: str, region: str, searcher) -> dict | None:
     low, high, sources = raw.get("low_gbp"), raw.get("high_gbp"), raw.get("source_count", 0)
     if low is None or high is None or sources < 1:
         return None
-    return {"low": int(low), "high": int(high), "sources": int(sources), "note": raw.get("note", "")}
+    return {
+        "low": int(low),
+        "high": int(high),
+        "sources": int(sources),
+        "note": raw.get("note", ""),
+    }
