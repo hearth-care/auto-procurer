@@ -89,14 +89,14 @@ def test_write_reply_batches_reply_quote_status_and_updated_cells():
     ]
 
 
-def test_update_heartbeat_writes_header_cell():
+def test_update_heartbeat_writes_outside_request_table():
     client = _client()
 
     client.update_heartbeat("sheet-1", dt.datetime(2026, 6, 11, 9, 40, tzinfo=dt.UTC))
 
     call = client.sheets.spreadsheets().values().updates[0]
     assert call["spreadsheetId"] == "sheet-1"
-    assert call["range"] == "A1"
+    assert call["range"] == "O1"
     assert call["body"]["values"] == [["xsource last checked 2026-06-11 09:40"]]
 
 

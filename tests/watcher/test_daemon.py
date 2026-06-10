@@ -27,11 +27,13 @@ class _Gmail:
     def __init__(self, thread_messages=None, recent_messages=None):
         self.thread_messages = thread_messages or {}
         self.recent_messages = recent_messages or []
+        self.recent_calls = 0
 
     def list_thread_messages(self, thread_id):
         return list(self.thread_messages.get(thread_id, []))
 
     def list_recent_messages(self):
+        self.recent_calls += 1
         return list(self.recent_messages)
 
 
@@ -172,3 +174,20 @@ def test_process_once_flags_off_thread_reply_without_parsing(tmp_path):
     assert report == {"processed": 0, "possible_replies": 1}
     assert saved.shortlist[0].reply == {}
     assert saved.watcher["possible_replies"][0]["message_id"] == "off-1"
+
+
+def test_process_once_skips_gmail_recent_scan_when_no_open_requests(tmp_path):
+    gmail = _Gmail()
+
+    report = process_once(
+        requests=_Store([]),
+        suppliers=_Store([]),
+        gmail=gmail,
+        sheets=_Sheets(),
+        gateway=_Gateway(),
+        state=ProcessedMessageStore(tmp_path / "watcher.sqlite3"),
+        now=dt.datetime(2026, 6, 11, 9, 40, tzinfo=dt.UTC),
+    )
+
+    assert report == {"processed": 0, "possible_replies": 0}
+    assert gmail.recent_calls == 0

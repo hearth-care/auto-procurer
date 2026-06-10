@@ -80,7 +80,11 @@ def run(once: bool = typer.Option(False, "--once", help="Run a single watcher cy
     if once:
         typer.echo(process())
         return
-    run_loop(process, poll_seconds=cfg.poll_seconds)
+    run_loop(
+        process,
+        poll_seconds=cfg.poll_seconds,
+        on_error=lambda exc: typer.echo(f"watcher cycle failed: {exc}", err=True),
+    )
 
 
 @watcher_app.command("status")

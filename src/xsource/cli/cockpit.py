@@ -28,6 +28,7 @@ from xsource.config import Config
 from xsource.research.candidates import Candidate
 from xsource.research.pipeline import RunCaps, run_research
 from xsource.research.triage import Triage, run_triage
+from xsource.secrets import secret_from_env
 from xsource.sheet.client import SheetClient
 from xsource.signals import emit as signals_emit
 from xsource.store.remote import SyncedStore
@@ -89,8 +90,8 @@ def _preconditions(ctx: WizardContext) -> list[Precondition]:
         ),
         Precondition(
             "Anthropic key",
-            bool(os.environ.get("ANTHROPIC_API_KEY")),
-            "present" if os.environ.get("ANTHROPIC_API_KEY") else "missing",
+            bool(secret_from_env("ANTHROPIC_API_KEY")),
+            "present" if secret_from_env("ANTHROPIC_API_KEY") else "missing",
         ),
         Precondition(
             "Sheets token",
@@ -119,8 +120,8 @@ def _outreach_preconditions(ctx: WizardContext) -> list[Precondition]:
     return [
         Precondition(
             "Anthropic key",
-            bool(os.environ.get("ANTHROPIC_API_KEY")),
-            "present" if os.environ.get("ANTHROPIC_API_KEY") else "missing",
+            bool(secret_from_env("ANTHROPIC_API_KEY")),
+            "present" if secret_from_env("ANTHROPIC_API_KEY") else "missing",
         ),
         Precondition(
             "Gmail token",
@@ -162,7 +163,7 @@ class _AnthropicStructuredGateway:
     def __init__(self) -> None:
         import anthropic
 
-        self.client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        self.client = anthropic.Anthropic(api_key=secret_from_env("ANTHROPIC_API_KEY"))
         self.model = os.environ.get("XSOURCE_RESEARCH_MODEL", "claude-sonnet-4-6")
 
     def complete_structured(self, messages, schema, role: str = "research") -> dict:

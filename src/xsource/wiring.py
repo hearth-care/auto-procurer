@@ -11,6 +11,7 @@ from xsource.budget import Budget
 from xsource.config import Config
 from xsource.research import places, pricesweep, websearch
 from xsource.research.companies_house import company_check
+from xsource.secrets import secret_from_env
 from xsource.store.models import Request, Supplier
 from xsource.store.remote import SyncedStore, make_blob
 
@@ -36,7 +37,7 @@ def build_research_fns(cfg: Config):
     maps_key = os.environ.get("GOOGLE_MAPS_API_KEY", "")
     ch_key = os.environ.get("COMPANIES_HOUSE_API_KEY", "")
     searcher = websearch.AnthropicSearcher(
-        api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+        api_key=secret_from_env("ANTHROPIC_API_KEY"),
         model=os.environ.get("XSOURCE_RESEARCH_MODEL", "claude-sonnet-4-6"),
     )
     return {

@@ -64,6 +64,19 @@ def test_env_file_parser_reads_simple_key_value_pairs(tmp_path):
     }
 
 
+def test_env_file_parser_rejects_direct_secret_values(tmp_path):
+    script = _load_script()
+    env_file = tmp_path / "xsource.env"
+    env_file.write_text("ANTHROPIC_API_KEY=sk-secret\n")
+
+    try:
+        script.read_env_file(env_file)
+    except ValueError as exc:
+        assert "ANTHROPIC_API_KEY_FILE" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_filter_jobs_selects_named_jobs_only():
     script = _load_script()
     jobs = script.jobs("/Users/olliepage/Developer/Auto-Procurer", uv_path="/opt/homebrew/bin/uv")
