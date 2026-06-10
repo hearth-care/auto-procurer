@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 
 from xsource.research.candidates import Candidate
 from xsource.research.validate import validate_directory_candidate
@@ -64,8 +65,9 @@ class AnthropicSearcher:
             messages=[{"role": "user", "content": f"Query: {query}\nWhen done searching, call report."}],
         )
         for block in resp.content:
-            if getattr(block, "type", None) == "tool_use" and block.name == "report":
-                return block.input
+            block_any = cast(Any, block)
+            if getattr(block_any, "type", None) == "tool_use" and getattr(block_any, "name", None) == "report":
+                return cast(dict, block_any.input)
         log.warning("websearch returned no report tool call for %r", query)
         return {"candidates": []}
 

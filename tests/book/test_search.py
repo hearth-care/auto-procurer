@@ -1,7 +1,6 @@
 from xsource.book.search import find_matches, search_suppliers
 from xsource.store.models import Supplier
 
-
 SUPPLIERS = [
     Supplier(
         id="s-1",

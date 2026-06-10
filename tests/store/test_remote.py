@@ -14,7 +14,8 @@ class FakeBlob:
         return self.data
 
     def upload_from_filename(self, path):
-        self.data = open(path).read()
+        with open(path) as f:
+            self.data = f.read()
         self.exists_flag = True
 
 

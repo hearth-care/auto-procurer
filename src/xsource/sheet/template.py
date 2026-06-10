@@ -55,7 +55,7 @@ def build_values(
     now_label: str,
 ) -> list[list[str]]:
     grid: list[list[str]] = [list(COLUMNS)]
-    for idx, (candidate, indicative_range) in enumerate(zip(rows, indicatives), start=1):
+    for idx, (candidate, indicative_range) in enumerate(zip(rows, indicatives, strict=True), start=1):
         grid.append(
             [
                 str(idx),

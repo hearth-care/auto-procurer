@@ -28,7 +28,7 @@ class Config:
     state_dir: str
 
     @classmethod
-    def from_env(cls) -> "Config":
+    def from_env(cls) -> Config:
         return cls(
             home_postcode=os.environ.get("XSOURCE_HOME_POSTCODE") or None,
             default_radius_miles=_int("XSOURCE_DEFAULT_RADIUS_MILES", 15),

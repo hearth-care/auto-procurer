@@ -16,7 +16,7 @@ class JsonlStore:
     def __init__(self, path: Path, model: type[Any]):
         self.path = Path(path)
         self.model = model
-        self._records: dict[str, object] = {}
+        self._records: dict[str, Any] = {}
         self._load()
 
     def _load(self) -> None:

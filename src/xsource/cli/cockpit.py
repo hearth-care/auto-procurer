@@ -26,6 +26,7 @@ from xsource.config import Config
 from xsource.research.pipeline import ResearchResult, RunCaps
 from xsource.sheet.client import SheetClient
 from xsource.signals import emit as signals_emit
+from xsource.store.remote import SyncedStore
 from xsource.wiring import build_budget, build_stores
 
 _APP_LABEL = "xsource"
@@ -46,10 +47,10 @@ _REQUEST_NEW_BLAST = BlastRadius(
 
 def _status() -> dict:
     cfg = Config.from_env()
-    try:
+    suppliers: SyncedStore | None = None
+    requests_: SyncedStore | None = None
+    with contextlib.suppress(Exception):
         suppliers, requests_ = build_stores(cfg)
-    except Exception:
-        suppliers = requests_ = None
     budget = build_budget(cfg, dt.date.today())
     return {"cfg": cfg, "suppliers": suppliers, "requests": requests_, "budget": budget}
 
