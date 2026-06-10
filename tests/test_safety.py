@@ -41,3 +41,13 @@ def test_request_new_declares_no_email_send_or_draft() -> None:
     spec = next(s for s in registry.get_capabilities() if s.key == "request.new")
     assert spec.blast_radius is not None
     assert "does not send or draft" in spec.blast_radius.summary.lower()
+
+
+def test_request_outreach_declares_draft_never_send() -> None:
+    cockpit.register_all()
+    spec = next(s for s in registry.get_capabilities() if s.key == "request.outreach")
+    assert spec.run is not None
+    assert spec.blast_radius is not None
+    summary = spec.blast_radius.summary.lower()
+    assert "draft" in summary
+    assert "never sends" in summary

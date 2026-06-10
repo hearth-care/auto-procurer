@@ -40,12 +40,18 @@ _SHELVES: dict[str, str] = {
     "B": "Requests",
     "C": "Black book",
     "D": "Publish",
+    "E": "Outreach",
     "G": "Diagnostics & setup",
 }
 
 _REQUEST_NEW_BLAST = BlastRadius(
     summary="Creates one Google Sheet and writes request + suppliers to the xsource store. Does not send or draft any email in P1.",
     reversible="Sheet can be deleted; store records can be removed by id.",
+)
+
+_REQUEST_OUTREACH_BLAST = BlastRadius(
+    summary="Creates Gmail drafts for shortlisted suppliers and records draft/thread ids. It never sends email.",
+    reversible="Drafts can be deleted from Gmail; outreach metadata can be removed from the request record.",
 )
 
 
@@ -100,6 +106,39 @@ def _preconditions(ctx: WizardContext) -> list[Precondition]:
         ),
         Precondition("Research budget", budget.allow_new_run(), budget.level()),
         Precondition("Home postcode", bool(cfg.home_postcode), cfg.home_postcode or "missing"),
+    ]
+
+
+def _outreach_preconditions(ctx: WizardContext) -> list[Precondition]:
+    report = _status()
+    suppliers = report["suppliers"]
+    requests_ = report["requests"]
+    gmail_token = os.environ.get("XSOURCE_GMAIL_TOKEN_PATH", "")
+    request_records = requests_.all() if requests_ is not None else []
+    open_requests = [r for r in request_records if getattr(r, "status", "") == "open"]
+    return [
+        Precondition(
+            "Anthropic key",
+            bool(os.environ.get("ANTHROPIC_API_KEY")),
+            "present" if os.environ.get("ANTHROPIC_API_KEY") else "missing",
+        ),
+        Precondition(
+            "Gmail token",
+            bool(gmail_token and Path(gmail_token).exists()),
+            gmail_token or "missing",
+        ),
+        Precondition(
+            "Store reachable",
+            _store_online(suppliers, requests_),
+            "GCS store available"
+            if _store_online(suppliers, requests_)
+            else "offline read-only cache",
+        ),
+        Precondition(
+            "Open request",
+            bool(open_requests),
+            f"{len(open_requests)} open" if open_requests else "none",
+        ),
     ]
 
 
@@ -251,6 +290,60 @@ _request_new_handler = make_walk_handler(
 )
 
 
+def _outreach_select_step(ctx: WizardContext, bag: dict) -> StepResult:
+    request_id = ctx.input_fn("Request id: ").strip() if ctx.input_fn else ""
+    if not request_id:
+        return StepResult(ok=False, message="No request id entered.")
+    return StepResult(ok=True, data={"request_id": request_id})
+
+
+def _outreach_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
+    if not confirm_apply(
+        ctx,
+        prompt="Create supplier outreach drafts?",
+        equivalent_cli="xsource request outreach",
+    ):
+        return StepResult(ok=False, message="Apply declined.")
+
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+
+    from xsource.outreach.client import SafeOutreachClient
+    from xsource.outreach.drafts import create_request_drafts
+
+    cfg = Config.from_env()
+    suppliers, requests_ = build_stores(cfg)
+    creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_GMAIL_TOKEN_PATH"])
+    service = build("gmail", "v1", credentials=creds, cache_discovery=False)
+    report = create_request_drafts(
+        request_id=bag["request_id"],
+        suppliers=suppliers,
+        requests=requests_,
+        draft_client=SafeOutreachClient(service),
+        now=dt.datetime.now(dt.UTC),
+        gateway=_AnthropicStructuredGateway(),
+    )
+    return StepResult(
+        ok=True,
+        data={
+            "summary": f"Created {report['drafted']} draft(s), skipped {report['skipped']}.",
+        },
+    )
+
+
+_request_outreach_handler = make_walk_handler(
+    title="Draft supplier outreach",
+    steps=[
+        Step(label="Request", run=_outreach_select_step),
+        Step(label="Drafts", run=_outreach_apply_step),
+    ],
+    blast_radius=_REQUEST_OUTREACH_BLAST,
+    preconditions_fn=_outreach_preconditions,
+    equivalent_cli="xsource request outreach",
+    total=2,
+)
+
+
 def register_all() -> None:
     """Register xsource's cockpit capabilities."""
     register_capability(
@@ -262,6 +355,17 @@ def register_all() -> None:
             equivalent_cli="xsource request new",
             run=_request_new_handler,
             blast_radius=_REQUEST_NEW_BLAST,
+        )
+    )
+    register_capability(
+        CapabilitySpec(
+            key="request.outreach",
+            shelf="E",
+            title="Draft outreach",
+            summary="Create draft-only quote requests for suppliers on an open request.",
+            equivalent_cli="xsource request outreach",
+            run=_request_outreach_handler,
+            blast_radius=_REQUEST_OUTREACH_BLAST,
         )
     )
     for key, shelf, title, summary, cli in (
