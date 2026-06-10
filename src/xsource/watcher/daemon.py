@@ -105,6 +105,8 @@ def process_once(
     possible_replies = 0
     supplier_records = _supplier_by_id(suppliers)
     open_requests = _open_requests(requests)
+    if not open_requests:
+        return {"processed": processed, "possible_replies": possible_replies}
     recent_messages = gmail.list_recent_messages()
 
     for request in open_requests:

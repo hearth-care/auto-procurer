@@ -121,7 +121,7 @@ class SheetClient:
     def update_heartbeat(self, sheet_id: str, checked_at) -> None:
         self.sheets.spreadsheets().values().update(
             spreadsheetId=sheet_id,
-            range="A1",
+            range="O1",
             valueInputOption="USER_ENTERED",
             body={"values": [[f"xsource last checked {checked_at.strftime('%Y-%m-%d %H:%M')}"]]},
         ).execute()

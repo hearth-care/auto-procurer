@@ -78,3 +78,26 @@ def test_apply_sheet_rows_warns_unknown_rank_without_crashing():
 
     assert report == {"updated_suppliers": 0, "warnings": ["unknown rank 99"]}
     assert request.status == "open"
+
+
+def test_apply_sheet_rows_is_idempotent_for_same_sheet_row():
+    request = Request(
+        id="r-0042",
+        created_at="2026-06-10T15:58:00+00:00",
+        raw_need="tree chipping",
+        shortlist=[ShortlistEntry(supplier_id="s-1", rank=1)],
+    )
+    suppliers = _Store([Supplier(id="s-1", name="Known")])
+    rows = [{"rank": 1, "chosen": "yes", "quote": "185", "status": "Chosen", "notes": "good"}]
+    synced_at = dt.datetime(2026, 6, 12, 8, 0, tzinfo=dt.UTC)
+
+    first = apply_sheet_rows(request, rows, suppliers=suppliers, synced_at=synced_at)
+    second = apply_sheet_rows(request, rows, suppliers=suppliers, synced_at=synced_at)
+
+    supplier = suppliers.get("s-1")
+    assert first == {"updated_suppliers": 1, "warnings": []}
+    assert second == {"updated_suppliers": 1, "warnings": []}
+    assert supplier.price_history == [
+        {"request_id": "r-0042", "date": "2026-06-12", "amount": 185, "outcome": "used"}
+    ]
+    assert supplier.notes == [{"date": "2026-06-12", "request_id": "r-0042", "text": "good"}]

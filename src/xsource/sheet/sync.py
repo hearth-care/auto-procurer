@@ -22,6 +22,15 @@ def _amount(value: Any) -> int | None:
         return None
 
 
+def _upsert_request_entry(entries: list[dict[str, Any]], item: dict[str, Any]) -> None:
+    request_id = item.get("request_id")
+    for idx, existing in enumerate(entries):
+        if existing.get("request_id") == request_id:
+            entries[idx] = item
+            return
+    entries.append(item)
+
+
 def apply_sheet_rows(
     request: Request,
     rows: list[dict[str, Any]],
@@ -51,17 +60,20 @@ def apply_sheet_rows(
         chosen = _truthy(row.get("chosen")) or status.lower() == "chosen"
 
         if quote is not None:
-            supplier.price_history.append(
+            _upsert_request_entry(
+                supplier.price_history,
                 {
                     "request_id": request.id,
                     "date": today,
                     "amount": quote,
                     "outcome": "used" if chosen else "quoted",
-                }
+                },
             )
             entry.reply["quote_amount"] = quote
         if notes:
-            supplier.notes.append({"date": today, "request_id": request.id, "text": notes})
+            _upsert_request_entry(
+                supplier.notes, {"date": today, "request_id": request.id, "text": notes}
+            )
         if status:
             entry.reply["status"] = status.lower()
         if chosen:

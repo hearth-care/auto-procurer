@@ -12,6 +12,8 @@ import plistlib
 import shutil
 import subprocess
 
+_DIRECT_SECRET_KEYS = {"ANTHROPIC_API_KEY"}
+
 
 @dataclasses.dataclass(frozen=True)
 class Job:
@@ -97,6 +99,8 @@ def read_env_file(path: pathlib.Path) -> dict[str, str]:
         value = value.strip().strip("'\"")
         if not key:
             raise ValueError(f"{path}:{lineno}: empty key")
+        if key in _DIRECT_SECRET_KEYS:
+            raise ValueError(f"{path}:{lineno}: use {key}_FILE instead of embedding {key}")
         environment[key] = value
     return environment
 
