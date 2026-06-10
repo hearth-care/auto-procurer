@@ -23,7 +23,9 @@ class Job:
         data = {
             "Label": self.label,
             "ProgramArguments": self.argv,
-            "WorkingDirectory": self.argv[2] if len(self.argv) > 2 and self.argv[1] == "--project" else str(pathlib.Path.home()),
+            "WorkingDirectory": self.argv[2]
+            if len(self.argv) > 2 and self.argv[1] == "--project"
+            else str(pathlib.Path.home()),
             "RunAtLoad": False,
             "StandardOutPath": str(pathlib.Path.home() / f"Library/Logs/{self.label}.out.log"),
             "StandardErrorPath": str(pathlib.Path.home() / f"Library/Logs/{self.label}.err.log"),
@@ -74,8 +76,12 @@ def main() -> None:
         default="/Users/olliepage/Developer/Auto-Procurer",
         help="Auto-Procurer checkout to run.",
     )
-    parser.add_argument("--write", action="store_true", help="Write plists to ~/Library/LaunchAgents.")
-    parser.add_argument("--load", action="store_true", help="Load plists with launchctl after writing.")
+    parser.add_argument(
+        "--write", action="store_true", help="Write plists to ~/Library/LaunchAgents."
+    )
+    parser.add_argument(
+        "--load", action="store_true", help="Load plists with launchctl after writing."
+    )
     args = parser.parse_args()
 
     launch_agents = pathlib.Path.home() / "Library/LaunchAgents"

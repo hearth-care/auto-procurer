@@ -58,10 +58,7 @@ class GmailWatcherClient:
 
     def list_thread_messages(self, thread_id: str) -> list[WatcherMessage]:
         thread = (
-            self.service.users()
-            .threads()
-            .get(userId="me", id=thread_id, format="full")
-            .execute()
+            self.service.users().threads().get(userId="me", id=thread_id, format="full").execute()
         )
         return [self._convert(message) for message in thread.get("messages", [])]
 
@@ -77,4 +74,3 @@ class GmailWatcherClient:
             )
             out.append(self._convert(msg))
         return out
-

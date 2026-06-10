@@ -128,4 +128,6 @@ def test_read_request_rows_maps_human_columns():
 
     rows = client.read_request_rows("sheet-1")
 
-    assert rows == [{"rank": 1, "status": "Chosen", "quote": "185", "chosen": "yes", "notes": "good"}]
+    assert rows == [
+        {"rank": 1, "status": "Chosen", "quote": "185", "chosen": "yes", "notes": "good"}
+    ]

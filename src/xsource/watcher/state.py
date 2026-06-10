@@ -44,4 +44,3 @@ class ProcessedMessageStore:
                 """,
                 (message_id, action),
             )
-
