@@ -1,0 +1,20 @@
+{
+  "places": [
+    {
+      "id": "ChIJabc123",
+      "displayName": {"text": "TQ Tree Services"},
+      "nationalPhoneNumber": "01626 870111",
+      "websiteUri": "https://tqtrees.co.uk/",
+      "formattedAddress": "Unit 3, Newton Abbot TQ12 2BU, UK",
+      "rating": 4.8,
+      "userRatingCount": 57
+    },
+    {
+      "id": "ChIJdef456",
+      "displayName": {"text": "Haldon Arb Ltd"},
+      "formattedAddress": "Exeter EX2 8XY, UK",
+      "rating": 4.7,
+      "userRatingCount": 12
+    }
+  ]
+}
