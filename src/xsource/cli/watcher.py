@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -18,6 +19,16 @@ from xsource.watcher.state import ProcessedMessageStore
 from xsource.wiring import build_stores
 
 watcher_app = typer.Typer(help="Run or inspect the xsource reply watcher.")
+
+
+class _LazyStructuredGateway:
+    def __init__(self) -> None:
+        self._gateway: Any | None = None
+
+    def complete_structured(self, messages, schema, role: str = "research") -> dict:
+        if self._gateway is None:
+            self._gateway = _AnthropicStructuredGateway()
+        return self._gateway.complete_structured(messages, schema, role=role)
 
 
 def _gmail_service():
@@ -46,7 +57,7 @@ def _process_factory():
     state = ProcessedMessageStore(Path(cfg.state_dir) / "watcher.sqlite3")
     gmail = GmailWatcherClient(_gmail_service(), own_addresses=own_addresses)
     sheets = _sheet_client()
-    gateway = _AnthropicStructuredGateway()
+    gateway = _LazyStructuredGateway()
 
     def _run_once():
         return process_once(
