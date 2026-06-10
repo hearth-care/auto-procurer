@@ -51,3 +51,9 @@ def test_request_outreach_declares_draft_never_send() -> None:
     summary = spec.blast_radius.summary.lower()
     assert "draft" in summary
     assert "never sends" in summary
+
+
+def test_p3_capabilities_are_registered() -> None:
+    cockpit.register_all()
+    keys = {spec.key for spec in registry.get_capabilities()}
+    assert {"request.sync", "watcher.status"} <= keys
