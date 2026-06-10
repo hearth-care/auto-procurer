@@ -57,3 +57,10 @@ def test_p3_capabilities_are_registered() -> None:
     cockpit.register_all()
     keys = {spec.key for spec in registry.get_capabilities()}
     assert {"request.sync", "watcher.status"} <= keys
+
+
+def test_p4_capabilities_are_registered_without_run_paths() -> None:
+    cockpit.register_all()
+    specs = {spec.key: spec for spec in registry.get_capabilities()}
+    assert {"request.trigger", "request.followup", "partner.checkatrade"} <= set(specs)
+    assert specs["partner.checkatrade"].run is None

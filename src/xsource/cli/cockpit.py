@@ -411,6 +411,27 @@ def register_all() -> None:
             "Show watched threads, reply parsing, and heartbeat status.",
             "xsource watcher status",
         ),
+        (
+            "request.trigger",
+            "A",
+            "Trigger new request",
+            "Convert an approved email/chat trigger into request.new input.",
+            "xsource request trigger",
+        ),
+        (
+            "request.followup",
+            "E",
+            "Draft follow-up",
+            "Create draft-only follow-up replies for supplier responses.",
+            "xsource request followup",
+        ),
+        (
+            "partner.checkatrade",
+            "D",
+            "Checkatrade partner lead",
+            "Prepare a signed partner lead request; posting requires an explicit gate.",
+            "xsource partner checkatrade",
+        ),
     ):
         register_capability(
             CapabilitySpec(
