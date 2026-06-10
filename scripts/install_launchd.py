@@ -69,6 +69,21 @@ def jobs(
     ]
 
 
+def _job_name(job: Job) -> str:
+    return job.label.rsplit(".", 1)[-1]
+
+
+def filter_jobs(jobs_: list[Job], only: list[str]) -> list[Job]:
+    if not only:
+        return jobs_
+    wanted = set(only)
+    known = {_job_name(job) for job in jobs_}
+    unknown = sorted(wanted - known)
+    if unknown:
+        raise ValueError(f"unknown job(s): {', '.join(unknown)}")
+    return [job for job in jobs_ if _job_name(job) in wanted]
+
+
 def read_env_file(path: pathlib.Path) -> dict[str, str]:
     environment = {}
     for lineno, raw in enumerate(path.expanduser().read_text().splitlines(), start=1):
@@ -114,6 +129,13 @@ def main() -> None:
         help="uv executable path to write into ProgramArguments.",
     )
     parser.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        choices=["watcher", "sync", "signals"],
+        help="Install/load only this job name. Repeat to select multiple jobs.",
+    )
+    parser.add_argument(
         "--write", action="store_true", help="Write plists to ~/Library/LaunchAgents."
     )
     parser.add_argument(
@@ -123,7 +145,10 @@ def main() -> None:
 
     environment = read_env_file(pathlib.Path(args.env_file)) if args.env_file else None
     launch_agents = pathlib.Path.home() / "Library/LaunchAgents"
-    for job in jobs(args.project_dir, uv_path=args.uv_path, environment=environment):
+    selected_jobs = filter_jobs(
+        jobs(args.project_dir, uv_path=args.uv_path, environment=environment), args.only
+    )
+    for job in selected_jobs:
         path = launch_agents / f"{job.label}.plist"
         if args.write:
             _write(path, job)

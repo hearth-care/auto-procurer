@@ -64,6 +64,27 @@ def test_env_file_parser_reads_simple_key_value_pairs(tmp_path):
     }
 
 
+def test_filter_jobs_selects_named_jobs_only():
+    script = _load_script()
+    jobs = script.jobs("/Users/olliepage/Developer/Auto-Procurer", uv_path="/opt/homebrew/bin/uv")
+
+    selected = script.filter_jobs(jobs, ["signals"])
+
+    assert [job.label for job in selected] == ["care.clonway.xsource.signals"]
+
+
+def test_filter_jobs_rejects_unknown_name():
+    script = _load_script()
+    jobs = script.jobs("/Users/olliepage/Developer/Auto-Procurer", uv_path="/opt/homebrew/bin/uv")
+
+    try:
+        script.filter_jobs(jobs, ["bogus"])
+    except ValueError as exc:
+        assert "unknown job" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_launchd_script_is_stdlib_only():
     text = Path("scripts/install_launchd.py").read_text()
 
