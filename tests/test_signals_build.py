@@ -13,16 +13,19 @@ the ``xfail`` marker. Until then the empty horizon is *visible*, not silent.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
-import pytest
 from clonway_cockpit.signals.horizon import ScanHorizon, is_scan_horizon
 from clonway_cockpit.signals.model import Signal
 
 from xsource.signals.build import (
+    build_chase_quote_signals,
+    build_recurring_service_signals,
+    build_watcher_health_signals,
     build_xsource_signals,
     scan_xsource_horizon,
 )
+from xsource.store.models import Request, ShortlistEntry, Supplier
 
 _NOW = datetime(2026, 6, 1, 7, 0, tzinfo=UTC)
 _TODAY = _NOW.date()
@@ -45,20 +48,87 @@ def test_build_signals_is_composed_horizon() -> None:
     assert all(isinstance(s, Signal) for s in out)
 
 
-def test_stub_horizon_is_empty_for_now() -> None:
-    # Documents the scaffolded state: the stub returns (). Delete this test once
-    # the horizon is filled in (the xfail below then drives you to).
-    assert build_xsource_signals(today=_TODAY, now=_NOW) == ()
+def test_chase_quotes_signal_for_old_unanswered_asks() -> None:
+    request = Request(
+        id="r-0042",
+        created_at="2026-05-28T12:00:00+00:00",
+        raw_need="tree chipping",
+        status="open",
+        constraints={"needed_by": "2026-06-05"},
+        shortlist=[
+            ShortlistEntry(
+                supplier_id="s-1",
+                rank=1,
+                outreach={"status": "asked", "asked_at": "2026-05-28T16:00:00+00:00"},
+            )
+        ],
+    )
+
+    signals = build_chase_quote_signals([request], today=_TODAY, now=_NOW, chase_after_days=3)
+
+    assert len(signals) == 1
+    assert signals[0].kind == "action.required"
+    assert signals[0].dedup_key == "xsource|chase|r-0042"
+    assert signals[0].source_id == "r-0042"
+    assert signals[0].due_at == date(2026, 6, 5)
 
 
-@pytest.mark.horizon_stub
-@pytest.mark.xfail(
-    reason="TODO(xsource): @scan_horizon stub returns () — fill in real "
-    "forward signals, then remove this xfail.",
-    strict=True,
-)
-def test_horizon_is_not_empty() -> None:
-    # Proactive-by-construction gate. xfail (strict) while the horizon is empty;
-    # the moment you emit a real signal this PASSES → XPASS → CI flags it, telling
-    # you to drop the xfail. A worker with a dead horizon stays visible.
-    assert build_xsource_signals(today=_TODAY, now=_NOW) != ()
+def test_chase_quotes_suppressed_when_all_asked_entries_have_quotes() -> None:
+    request = Request(
+        id="r-0042",
+        created_at="2026-05-28T12:00:00+00:00",
+        raw_need="tree chipping",
+        status="open",
+        shortlist=[
+            ShortlistEntry(
+                supplier_id="s-1",
+                rank=1,
+                outreach={"status": "asked", "asked_at": "2026-05-28T16:00:00+00:00"},
+                reply={"status": "quoted", "quote_amount": 185},
+            )
+        ],
+    )
+
+    assert build_chase_quote_signals([request], today=_TODAY, now=_NOW) == ()
+
+
+def test_recurring_service_signal_when_due_within_21_days() -> None:
+    supplier = Supplier(
+        id="s-0017",
+        name="Smith Heating",
+        categories=["heating"],
+        last_used="2025-06-15",
+        recurs_every_months=12,
+        price_history=[{"amount": 180, "date": "2025-06-15"}],
+    )
+
+    signals = build_recurring_service_signals([supplier], today=_TODAY, now=_NOW)
+
+    assert len(signals) == 1
+    assert signals[0].kind == "deadline.approaching"
+    assert signals[0].dedup_key == "xsource|recur|s-0017"
+    assert signals[0].due_at == date(2026, 6, 15)
+
+
+def test_watcher_health_signal_when_open_thread_poll_is_stale() -> None:
+    request = Request(
+        id="r-0042",
+        created_at="2026-05-28T12:00:00+00:00",
+        raw_need="tree chipping",
+        status="open",
+        watcher={"last_checked_at": "2026-06-01T04:30:00+00:00"},
+        shortlist=[
+            ShortlistEntry(
+                supplier_id="s-1",
+                rank=1,
+                outreach={"thread_id": "thr-1", "status": "draft_ready"},
+            )
+        ],
+    )
+
+    signals = build_watcher_health_signals([request], today=_TODAY, now=_NOW)
+
+    assert len(signals) == 1
+    assert signals[0].kind == "anomaly.detected"
+    assert signals[0].dedup_key == "xsource|watcher"
+    assert signals[0].source_id == "watcher"

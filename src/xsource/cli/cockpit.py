@@ -397,6 +397,20 @@ def register_all() -> None:
             "Regenerate the read-only staff supplier directory.",
             "xsource book publish",
         ),
+        (
+            "request.sync",
+            "B",
+            "Sync request Sheet",
+            "Read human Sheet edits back into the request and black book.",
+            "xsource request sync",
+        ),
+        (
+            "watcher.status",
+            "E",
+            "Reply watcher",
+            "Show watched threads, reply parsing, and heartbeat status.",
+            "xsource watcher status",
+        ),
     ):
         register_capability(
             CapabilitySpec(
