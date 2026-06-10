@@ -17,6 +17,7 @@ build/
 htmlcov/
 coverage.xml
 # AI-tool scratch dirs / worktrees
+.Codex/
 .claude/
 .superpowers/
 .claude/
