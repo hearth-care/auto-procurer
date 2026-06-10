@@ -15,7 +15,7 @@ def _load_script():
 
 def test_launchd_script_declares_required_jobs():
     script = _load_script()
-    jobs = script.jobs("/Users/olliepage/Developer/Auto-Procurer")
+    jobs = script.jobs("/Users/olliepage/Developer/Auto-Procurer", uv_path="/opt/homebrew/bin/uv")
     labels = {job.label for job in jobs}
 
     assert labels == {
@@ -23,8 +23,45 @@ def test_launchd_script_declares_required_jobs():
         "care.clonway.xsource.sync",
         "care.clonway.xsource.signals",
     }
+    assert all(job.argv[0] == "/opt/homebrew/bin/uv" for job in jobs)
     sync_job = next(job for job in jobs if job.label == "care.clonway.xsource.sync")
     assert sync_job.argv[-2:] == ["request", "sync-all"]
+
+
+def test_launchd_jobs_include_environment_variables():
+    script = _load_script()
+    env = {
+        "XSOURCE_STATE_DIR": "/Users/olliepage/.claude-inbox/xsource/state",
+        "XSOURCE_GMAIL_TOKEN_PATH": "/Users/olliepage/.claude-inbox/milo/gmail-token.json",
+    }
+
+    job = script.jobs(
+        "/Users/olliepage/Developer/Auto-Procurer",
+        uv_path="/opt/homebrew/bin/uv",
+        environment=env,
+    )[0]
+
+    assert job.plist()["EnvironmentVariables"] == env
+
+
+def test_env_file_parser_reads_simple_key_value_pairs(tmp_path):
+    script = _load_script()
+    env_file = tmp_path / "xsource.env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "# comment",
+                "XSOURCE_STATE_DIR=/Users/olliepage/.claude-inbox/xsource/state",
+                "XSOURCE_OWN_EMAILS='milo.garth@clonwaycare.co.uk'",
+                "",
+            ]
+        )
+    )
+
+    assert script.read_env_file(env_file) == {
+        "XSOURCE_STATE_DIR": "/Users/olliepage/.claude-inbox/xsource/state",
+        "XSOURCE_OWN_EMAILS": "milo.garth@clonwaycare.co.uk",
+    }
 
 
 def test_launchd_script_is_stdlib_only():

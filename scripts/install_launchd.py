@@ -9,6 +9,7 @@ import argparse
 import dataclasses
 import pathlib
 import plistlib
+import shutil
 import subprocess
 
 
@@ -18,6 +19,7 @@ class Job:
     argv: list[str]
     start_interval: int | None = None
     start_calendar: dict[str, int] | None = None
+    environment: dict[str, str] | None = None
 
     def plist(self) -> dict:
         data = {
@@ -34,28 +36,54 @@ class Job:
             data["StartInterval"] = self.start_interval
         if self.start_calendar is not None:
             data["StartCalendarInterval"] = self.start_calendar
+        if self.environment:
+            data["EnvironmentVariables"] = self.environment
         return data
 
 
-def jobs(project_dir: str) -> list[Job]:
-    uv = "uv"
+def jobs(
+    project_dir: str,
+    *,
+    uv_path: str = "uv",
+    environment: dict[str, str] | None = None,
+) -> list[Job]:
     return [
         Job(
             label="care.clonway.xsource.watcher",
-            argv=[uv, "--project", project_dir, "run", "xsource", "watcher", "run"],
+            argv=[uv_path, "--project", project_dir, "run", "xsource", "watcher", "run"],
             start_interval=60,
+            environment=environment,
         ),
         Job(
             label="care.clonway.xsource.sync",
-            argv=[uv, "--project", project_dir, "run", "xsource", "request", "sync-all"],
+            argv=[uv_path, "--project", project_dir, "run", "xsource", "request", "sync-all"],
             start_calendar={"Hour": 2, "Minute": 10},
+            environment=environment,
         ),
         Job(
             label="care.clonway.xsource.signals",
-            argv=[uv, "--project", project_dir, "run", "xsource", "signals", "scan"],
+            argv=[uv_path, "--project", project_dir, "run", "xsource", "signals", "scan"],
             start_calendar={"Hour": 7, "Minute": 5},
+            environment=environment,
         ),
     ]
+
+
+def read_env_file(path: pathlib.Path) -> dict[str, str]:
+    environment = {}
+    for lineno, raw in enumerate(path.expanduser().read_text().splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            raise ValueError(f"{path}:{lineno}: expected KEY=VALUE")
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("'\"")
+        if not key:
+            raise ValueError(f"{path}:{lineno}: empty key")
+        environment[key] = value
+    return environment
 
 
 def _write(path: pathlib.Path, job: Job) -> None:
@@ -77,6 +105,15 @@ def main() -> None:
         help="Auto-Procurer checkout to run.",
     )
     parser.add_argument(
+        "--env-file",
+        help="Optional KEY=VALUE file to embed into each launchd plist EnvironmentVariables.",
+    )
+    parser.add_argument(
+        "--uv-path",
+        default=shutil.which("uv") or "uv",
+        help="uv executable path to write into ProgramArguments.",
+    )
+    parser.add_argument(
         "--write", action="store_true", help="Write plists to ~/Library/LaunchAgents."
     )
     parser.add_argument(
@@ -84,8 +121,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    environment = read_env_file(pathlib.Path(args.env_file)) if args.env_file else None
     launch_agents = pathlib.Path.home() / "Library/LaunchAgents"
-    for job in jobs(args.project_dir):
+    for job in jobs(args.project_dir, uv_path=args.uv_path, environment=environment):
         path = launch_agents / f"{job.label}.plist"
         if args.write:
             _write(path, job)
