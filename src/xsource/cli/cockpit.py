@@ -7,6 +7,7 @@ import datetime as dt
 import os
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 from clonway_cockpit import keys, render, shell, usage
 from clonway_cockpit.doctor import Fix, Probe, fixes_for
@@ -21,13 +22,16 @@ from clonway_cockpit.state import CockpitState, NeedsItem, Pill
 from clonway_cockpit.walk import Precondition, Step, StepResult, confirm_apply, make_walk_handler
 from rich.console import Console, RenderableType
 
+from xsource.book.search import find_matches
 from xsource.budget import Budget
 from xsource.config import Config
-from xsource.research.pipeline import ResearchResult, RunCaps
+from xsource.research.candidates import Candidate
+from xsource.research.pipeline import RunCaps, run_research
+from xsource.research.triage import Triage, run_triage
 from xsource.sheet.client import SheetClient
 from xsource.signals import emit as signals_emit
 from xsource.store.remote import SyncedStore
-from xsource.wiring import build_budget, build_stores
+from xsource.wiring import build_budget, build_research_fns, build_stores
 
 _APP_LABEL = "xsource"
 
@@ -105,23 +109,81 @@ def _need_step(ctx: WizardContext, bag: dict) -> StepResult:
     )
 
 
+class _AnthropicStructuredGateway:
+    def __init__(self) -> None:
+        import anthropic
+
+        self.client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        self.model = os.environ.get("XSOURCE_RESEARCH_MODEL", "claude-sonnet-4-6")
+
+    def complete_structured(self, messages, schema, role: str = "research") -> dict:
+        resp = self.client.messages.create(
+            model=self.model,
+            max_tokens=1200,
+            tools=[
+                {
+                    "name": "report",
+                    "description": "Return the structured result.",
+                    "input_schema": schema,
+                }
+            ],
+            tool_choice={"type": "tool", "name": "report"},
+            messages=messages,
+        )
+        for block in resp.content:
+            block_any = cast(Any, block)
+            if getattr(block_any, "type", None) == "tool_use" and getattr(block_any, "name", None) == "report":
+                return cast(dict, block_any.input)
+        raise RuntimeError(f"{role} model returned no report tool call")
+
+
 def _triage_step(ctx: WizardContext, bag: dict) -> StepResult:
-    raw_need = bag["raw_need"]
-    triage = {
-        "category": "general",
-        "search_terms": [raw_need],
-        "also_try": [],
-        "email_vars": {"job_summary": raw_need, "location_town": "local"},
-    }
-    return StepResult(ok=True, data={"triage": triage})
+    triage = run_triage(bag["raw_need"], bag["constraints"], _AnthropicStructuredGateway())
+    return StepResult(ok=True, data={"triage": triage.to_dict()})
 
 
 def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
-    result = ResearchResult(
-        shortlist=[],
-        indicative=None,
-        stages={"research": "not run"},
-        caps=RunCaps(0, 0),
+    cfg = Config.from_env()
+    suppliers, _requests = build_stores(cfg)
+    triage_dict = bag["triage"]
+    triage = Triage(
+        category=triage_dict["category"],
+        search_terms=list(triage_dict["search_terms"]),
+        also_try=list(triage_dict.get("also_try", [])),
+        email_vars=dict(triage_dict["email_vars"]),
+    )
+    book_suppliers = find_matches(
+        suppliers.all(),
+        category=triage.category,
+        tags=list(triage_dict.get("tags", [])),
+    )
+    book_matches = [
+        Candidate(
+            name=supplier.name,
+            source="book",
+            phone=supplier.phone,
+            email=supplier.email,
+            website=supplier.website,
+            address=supplier.address,
+            postcode=supplier.postcode,
+            source_url=supplier.source_url,
+            rating=(next(iter(supplier.rating.values()))[0] if supplier.rating else None),
+            review_count=(next(iter(supplier.rating.values()))[1] if supplier.rating else None),
+            rating_scale=5 if supplier.rating else None,
+            extra={"supplier_id": supplier.id},
+        )
+        for supplier in book_suppliers
+    ]
+    fns = build_research_fns(cfg)
+    result = run_research(
+        triage=triage,
+        book_matches=book_matches,
+        places_fn=fns["places_fn"],
+        directory_fn=fns["directory_fn"],
+        price_fn=fns["price_fn"],
+        ch_fn=fns["ch_fn"],
+        caps=RunCaps(cfg.max_places_calls, cfg.max_web_searches),
+        shortlist_n=cfg.shortlist_n,
     )
     return StepResult(ok=True, data={"result": result})
 

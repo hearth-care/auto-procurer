@@ -76,3 +76,66 @@ def test_build_shortlist_rows_marks_call_vs_draft():
         ]
     )
     assert rows[0]["mode"] == "email" and rows[1]["mode"] == "call"
+
+
+def test_cockpit_steps_call_triage_and_research_pipeline(monkeypatch):
+    from xsource.cli import cockpit
+    from xsource.research.triage import Triage
+    from xsource.store.models import Supplier
+
+    triage = Triage(
+        category="trees-grounds",
+        search_terms=["tree surgeon"],
+        also_try=[],
+        email_vars={"job_summary": "tree down", "location_town": "Newton Abbot"},
+    )
+    calls = {}
+
+    def fake_run_triage(raw_need, constraints, gateway):
+        calls["triage"] = (raw_need, constraints)
+        return triage
+
+    class FakeSuppliers:
+        def all(self):
+            return [
+                Supplier(
+                    id="s-1",
+                    name="Old Friend",
+                    categories=["trees-grounds"],
+                    phone="+441626000001",
+                )
+            ]
+
+    def fake_run_research(**kwargs):
+        calls["research"] = kwargs
+        return ResearchResult(
+            shortlist=[Candidate(name="Old Friend", source="book")],
+            indicative=None,
+            stages={},
+            caps=kwargs["caps"],
+        )
+
+    monkeypatch.setattr(cockpit, "run_triage", fake_run_triage)
+    monkeypatch.setattr(cockpit, "_AnthropicStructuredGateway", lambda: object())
+    monkeypatch.setattr(cockpit, "build_stores", lambda cfg: (FakeSuppliers(), object()))
+    monkeypatch.setattr(
+        cockpit,
+        "build_research_fns",
+        lambda cfg: {
+            "places_fn": lambda term: [],
+            "directory_fn": lambda term, site: [],
+            "price_fn": lambda term: None,
+            "ch_fn": lambda name: None,
+        },
+    )
+    monkeypatch.setattr(cockpit, "run_research", fake_run_research)
+
+    bag = {"raw_need": "tree down", "constraints": {"radius_miles": 15}}
+    triage_result = cockpit._triage_step(object(), bag)
+    bag.update(triage_result.data)
+    research_result = cockpit._research_step(object(), bag)
+
+    assert calls["triage"] == ("tree down", {"radius_miles": 15})
+    assert calls["research"]["triage"] == triage
+    assert [c.name for c in calls["research"]["book_matches"]] == ["Old Friend"]
+    assert research_result.data["result"].shortlist[0].source == "book"
