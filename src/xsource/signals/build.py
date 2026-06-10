@@ -1,68 +1,229 @@
-"""Build xsource's forward-looking items into shared fleet Signals.
-
-A worker MUST declare its **forward-looking** alerts — insurance renewals,
-filing deadlines, things due to post — not just its right-now ones. That is the
-difference between a reactive log and a fleet that warns you *before* the
-deadline. The framework names that shape ``ScanHorizon`` in
-``clonway_cockpit.signals.horizon``: ``(*, today, now) -> Sequence[Signal]``,
-exactly what ``emit_signals(build=...)`` consumes.
-
-This module is **proactive by construction**: it ships a mandatory
-``@scan_horizon`` stub (``scan_xsource_horizon``) wired through
-``compose_horizon`` into the public ``build_xsource_signals`` callable.
-The stub returns ``()`` today — a guarded ``xfail`` test
-(``tests/test_signals_build.py``) makes that emptiness *visible* until you fill
-in real domain signals, so a worker can't quietly ship a dead horizon.
-
-TODO(xsource): replace the stub body with real domain scans, each
-returning ``Signal``s grounded in live state (your integration / DB / Sheets —
-DON'T fabricate), every horizon item carrying a real ``due_at`` so urgency
-sharpens as the date approaches without re-raising. Add more ``@scan_horizon``
-functions and list them in ``compose_horizon(...)`` below. Then flip the
-``xfail`` test to assert your real signals.
-
-Worked examples in the fleet:
-
-* xbook — insurance renewal due, compliance filing due, pay run due to post,
-  HMRC/pension payment coming up, cash getting tight.
-* xhr — DBS expiring, right-to-work recheck due, probation review due.
-* xletter — campaign send window, content review due.
-* xquill — promise/commitment deadlines from chat digests.
-"""
+"""Build xsource's forward-looking items into shared fleet Signals."""
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 from datetime import date as Date
-from datetime import datetime
 
 from clonway_cockpit.signals.horizon import compose_horizon, scan_horizon
 from clonway_cockpit.signals.model import Signal
 
+from xsource.config import Config
+from xsource.store.models import Request, Supplier
+from xsource.wiring import build_stores
+
 _WORKER = "xsource"
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    with contextlib.suppress(ValueError):
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+    return None
+
+
+def _parse_date(value: str | None) -> Date | None:
+    if not value:
+        return None
+    with contextlib.suppress(ValueError):
+        return Date.fromisoformat(value)
+    return None
+
+
+def _add_months(day: Date, months: int) -> Date:
+    month_index = day.month - 1 + months
+    year = day.year + month_index // 12
+    month = month_index % 12 + 1
+    month_lengths = [
+        31,
+        29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28,
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ]
+    return Date(year, month, min(day.day, month_lengths[month - 1]))
+
+
+def _signal(
+    *,
+    kind: str,
+    title: str,
+    detail: str,
+    level: str,
+    urgency: str,
+    dedup_key: str,
+    emitted_at: datetime,
+    due_at: Date | None,
+    capability_key: str | None,
+    focus: str | None,
+    source_id: str,
+) -> Signal:
+    return Signal(
+        worker=_WORKER,
+        kind=kind,
+        title=title,
+        detail=detail,
+        level=level,
+        urgency=urgency,
+        capability_key=capability_key,
+        focus=focus,
+        dedup_key=dedup_key,
+        emitted_at=emitted_at,
+        due_at=due_at,
+        source_ref=source_id,
+        source_id=source_id,
+    )
+
+
+def build_chase_quote_signals(
+    requests: Sequence[Request],
+    *,
+    today: Date,
+    now: datetime,
+    chase_after_days: int = 3,
+) -> tuple[Signal, ...]:
+    out = []
+    threshold = now.astimezone(UTC) - timedelta(days=chase_after_days)
+    for request in requests:
+        if request.status != "open":
+            continue
+        outstanding = []
+        for entry in request.shortlist:
+            asked_at = _parse_datetime(entry.outreach.get("asked_at"))
+            if not asked_at or asked_at > threshold:
+                continue
+            reply_status = str(entry.reply.get("status", "")).lower()
+            if reply_status in {"quoted", "declined", "no"} or entry.reply.get("quote_amount"):
+                continue
+            outstanding.append(entry)
+        if not outstanding:
+            continue
+        due_at = _parse_date(str(request.constraints.get("needed_by", "")))
+        out.append(
+            _signal(
+                kind="action.required",
+                title=f"Chase quotes - {request.raw_need}",
+                detail=f"{len(outstanding)} supplier reply pending after {chase_after_days} days.",
+                level="warn",
+                urgency="high" if due_at and due_at <= today + timedelta(days=2) else "normal",
+                dedup_key=f"xsource|chase|{request.id}",
+                emitted_at=now,
+                due_at=due_at,
+                capability_key="request.list",
+                focus=request.id,
+                source_id=request.id,
+            )
+        )
+    return tuple(out)
+
+
+def build_recurring_service_signals(
+    suppliers: Sequence[Supplier],
+    *,
+    today: Date,
+    now: datetime,
+    horizon_days: int = 21,
+) -> tuple[Signal, ...]:
+    out = []
+    for supplier in suppliers:
+        if not supplier.recurs_every_months or not supplier.last_used:
+            continue
+        last_used = _parse_date(supplier.last_used)
+        if last_used is None:
+            continue
+        due_at = _add_months(last_used, supplier.recurs_every_months)
+        if today <= due_at <= today + timedelta(days=horizon_days):
+            out.append(
+                _signal(
+                    kind="deadline.approaching",
+                    title=f"{supplier.name} recurring service due",
+                    detail=f"{supplier.name} is due around {due_at.isoformat()}.",
+                    level="warn",
+                    urgency="normal",
+                    dedup_key=f"xsource|recur|{supplier.id}",
+                    emitted_at=now,
+                    due_at=due_at,
+                    capability_key="book.search",
+                    focus=supplier.id,
+                    source_id=supplier.id,
+                )
+            )
+    return tuple(out)
+
+
+def build_watcher_health_signals(
+    requests: Sequence[Request],
+    *,
+    today: Date,
+    now: datetime,
+    stale_after: timedelta = timedelta(hours=2),
+) -> tuple[Signal, ...]:
+    live_threads = [
+        entry.outreach.get("thread_id")
+        for request in requests
+        if request.status == "open"
+        for entry in request.shortlist
+        if entry.outreach.get("thread_id")
+    ]
+    if not live_threads:
+        return ()
+    last_checked = [
+        parsed
+        for request in requests
+        if request.status == "open"
+        for parsed in [_parse_datetime(request.watcher.get("last_checked_at"))]
+        if parsed is not None
+    ]
+    if not last_checked or max(last_checked) <= now.astimezone(UTC) - stale_after:
+        return (
+            _signal(
+                kind="anomaly.detected",
+                title="xsource reply watcher stale",
+                detail=f"{len(live_threads)} live outreach thread(s), watcher stale.",
+                level="error",
+                urgency="high",
+                dedup_key="xsource|watcher",
+                emitted_at=now,
+                due_at=today,
+                capability_key="doctor",
+                focus="watcher",
+                source_id="watcher",
+            ),
+        )
+    return ()
 
 
 @scan_horizon
 def scan_xsource_horizon(*, today: Date, now: datetime) -> Sequence[Signal]:
-    """xsource's forward horizon scan — the one place this worker says
-    "here's what's coming".
-
-    STUB: returns ``()``. Replace with real forward-looking Signals built from
-    live domain state, each with a real ``due_at``. Until then the guarded
-    ``xfail`` test keeps this empty horizon visible (proactive by construction).
-
-    Build each Signal with a stable ``title`` (drives the dedup key — keep it
-    constant as the item escalates) and a ``source_id`` (per-instance business
-    id, folded into the dedup key so two concurrent same-title items get distinct
-    keys). ``clonway_cockpit.signals.model.build_signals`` maps a tuple of
-    ``NeedsItem`` 1:1 if you keep a cockpit needs-list.
-    """
-    # TODO(xsource): scan real domain state and yield forward Signals.
+    cfg = Config.from_env()
+    with contextlib.suppress(Exception):
+        suppliers, requests = build_stores(cfg)
+        request_records = requests.all()
+        supplier_records = suppliers.all()
+        return (
+            *build_chase_quote_signals(
+                request_records,
+                today=today,
+                now=now,
+                chase_after_days=cfg.chase_after_days,
+            ),
+            *build_recurring_service_signals(supplier_records, today=today, now=now),
+            *build_watcher_health_signals(request_records, today=today, now=now),
+        )
     return ()
 
 
-# compose_horizon stitches one-or-more @scan_horizon scanners into the single
-# build(*, today, now) callable emit_signals expects (concatenated in
-# declaration order; ranking + the global cap happen downstream). Add scanners
-# here as you grow the horizon: compose_horizon(scan_a, scan_b, ...).
 build_xsource_signals = compose_horizon(scan_xsource_horizon)
