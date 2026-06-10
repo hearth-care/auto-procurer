@@ -1,22 +1,12 @@
-"""xsource's cockpit — the interactive operations surface.
-
-The GENERIC three-region cockpit loop (pulse / needs-you / toolkit, navigation,
-type-to-filter, the open-capability chokepoint, the Doctor loop, animated
-progress) lives in ``clonway_cockpit.shell``. This module is the THIN
-xsource wrapper: it builds the worker's :class:`clonway_cockpit.shell.Host`
-(how xsource captures state, builds a walk's ``WizardContext``, activates
-a pulse pill, runs its Doctor probes, records usage, and what fires on open) and
-threads it into the framework loop.
-
-Scaffolded with ONE example capability, a pulse stub, and a Doctor stub so the
-three-region grammar renders out of the box. Replace these with real xsource
-capabilities + live status as the worker grows.
-"""
+"""xsource's cockpit: the interactive operations surface."""
 
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
+import os
 import sys
+from pathlib import Path
 
 from clonway_cockpit import keys, render, shell, usage
 from clonway_cockpit.doctor import Fix, Probe, fixes_for
@@ -28,105 +18,275 @@ from clonway_cockpit.registry import (
     register_capability,
 )
 from clonway_cockpit.state import CockpitState, NeedsItem, Pill
-from clonway_cockpit.walk import Step, StepResult, make_walk_handler
+from clonway_cockpit.walk import Precondition, Step, StepResult, confirm_apply, make_walk_handler
 from rich.console import Console, RenderableType
 
+from xsource.budget import Budget
+from xsource.config import Config
+from xsource.research.pipeline import ResearchResult, RunCaps
+from xsource.sheet.client import SheetClient
 from xsource.signals import emit as signals_emit
+from xsource.wiring import build_budget, build_stores
 
 _APP_LABEL = "xsource"
 
+_SHELVES: dict[str, str] = {
+    "A": "New request",
+    "B": "Requests",
+    "C": "Black book",
+    "D": "Publish",
+    "G": "Diagnostics & setup",
+}
 
-# The toolkit shelves this worker draws (letter -> label). Scaffolded with two:
-# A for the example capability, G for Doctor. Add shelves as you grow the toolkit;
-# the cockpit lays out exactly these letters (not xbook's default A–G taxonomy).
-_SHELVES: dict[str, str] = {"A": "Capabilities", "G": "Diagnostics & setup"}
-
-# The example capability's blast radius — read-only, the safety floor a generated
-# worker starts from. Carried on the spec AND handed to the walk handler.
-_EXAMPLE_BLAST = BlastRadius(
-    summary="Nothing — this is a read-only example stub.",
-    reversible="Read-only; nothing to undo.",
+_REQUEST_NEW_BLAST = BlastRadius(
+    summary="Creates one Google Sheet and writes request + suppliers to the xsource store. Does not send or draft any email in P1.",
+    reversible="Sheet can be deleted; store records can be removed by id.",
 )
 
 
-# --- the example capability ------------------------------------------------
-# A trivial single-step walk so the toolkit region has something to open and the
-# write-gate posture is inherited. Replace with real xsource capabilities.
-def _example_step(ctx: WizardContext, bag: dict) -> StepResult:
-    return StepResult(ok=True, message="Example capability ran (stub).", data={"summary": "Done."})
+def _status() -> dict:
+    cfg = Config.from_env()
+    try:
+        suppliers, requests_ = build_stores(cfg)
+    except Exception:
+        suppliers = requests_ = None
+    budget = build_budget(cfg, dt.date.today())
+    return {"cfg": cfg, "suppliers": suppliers, "requests": requests_, "budget": budget}
 
 
-_example_handler = make_walk_handler(
-    title="Example capability",
-    steps=[Step(label="Run example", run=_example_step)],
-    blast_radius=_EXAMPLE_BLAST,
-    preconditions_fn=lambda ctx: [],
-    equivalent_cli="xsource example",
+def _store_online(suppliers, requests_) -> bool:
+    return suppliers is not None and requests_ is not None and not suppliers.offline and not requests_.offline
+
+
+def _preconditions(ctx: WizardContext) -> list[Precondition]:
+    report = _status()
+    cfg: Config = report["cfg"]
+    suppliers = report["suppliers"]
+    requests_ = report["requests"]
+    budget: Budget = report["budget"]
+    sheets_token = os.environ.get("XSOURCE_SHEETS_TOKEN_PATH", "")
+    return [
+        Precondition(
+            "Google Maps key",
+            bool(os.environ.get("GOOGLE_MAPS_API_KEY")),
+            "present" if os.environ.get("GOOGLE_MAPS_API_KEY") else "missing",
+        ),
+        Precondition(
+            "Anthropic key",
+            bool(os.environ.get("ANTHROPIC_API_KEY")),
+            "present" if os.environ.get("ANTHROPIC_API_KEY") else "missing",
+        ),
+        Precondition(
+            "Sheets token",
+            bool(sheets_token and Path(sheets_token).exists()),
+            sheets_token or "missing",
+        ),
+        Precondition(
+            "Store reachable",
+            _store_online(suppliers, requests_),
+            "GCS store available" if _store_online(suppliers, requests_) else "offline read-only cache",
+        ),
+        Precondition("Research budget", budget.allow_new_run(), budget.level()),
+        Precondition("Home postcode", bool(cfg.home_postcode), cfg.home_postcode or "missing"),
+    ]
+
+
+def _need_step(ctx: WizardContext, bag: dict) -> StepResult:
+    raw_need = ctx.input_fn("Need: ").strip() if ctx.input_fn else ""
+    if not raw_need:
+        return StepResult(ok=False, message="No need entered.")
+    return StepResult(
+        ok=True,
+        data={
+            "raw_need": raw_need,
+            "constraints": {"radius_miles": Config.from_env().default_radius_miles, "needed_by": None},
+        },
+    )
+
+
+def _triage_step(ctx: WizardContext, bag: dict) -> StepResult:
+    raw_need = bag["raw_need"]
+    triage = {
+        "category": "general",
+        "search_terms": [raw_need],
+        "also_try": [],
+        "email_vars": {"job_summary": raw_need, "location_town": "local"},
+    }
+    return StepResult(ok=True, data={"triage": triage})
+
+
+def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
+    result = ResearchResult(
+        shortlist=[],
+        indicative=None,
+        stages={"research": "not run"},
+        caps=RunCaps(0, 0),
+    )
+    return StepResult(ok=True, data={"result": result})
+
+
+def _review_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
+    if not confirm_apply(ctx, prompt="Create request sheet?", equivalent_cli="xsource request new"):
+        return StepResult(ok=False, message="Apply declined.")
+    from google.oauth2.credentials import Credentials
+
+    from xsource.walks.request_new import apply_request
+
+    cfg = Config.from_env()
+    suppliers, requests_ = build_stores(cfg)
+
+    def create_sheet(title: str, values: list[list[str]]) -> tuple[str, str]:
+        creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_SHEETS_TOKEN_PATH"])
+        return SheetClient(creds).create_request_sheet(
+            title, values, cfg.drive_folder_id, cfg.staff_share_group
+        )
+
+    request = apply_request(
+        raw_need=bag["raw_need"],
+        triage_dict=bag["triage"],
+        constraints=bag["constraints"],
+        result=bag["result"],
+        suppliers=suppliers,
+        requests=requests_,
+        create_sheet_fn=create_sheet,
+        now=dt.datetime.now(),
+    )
+    return StepResult(
+        ok=True,
+        data={"summary": f"Created {request.id}.", "result_links": [("Sheet", request.sheet_url or "")]},
+    )
+
+
+_request_new_handler = make_walk_handler(
+    title="New procurement request",
+    steps=[
+        Step(label="Need", run=_need_step),
+        Step(label="Triage", run=_triage_step),
+        Step(label="Research", run=_research_step),
+        Step(label="Review and apply", run=_review_apply_step),
+    ],
+    blast_radius=_REQUEST_NEW_BLAST,
+    preconditions_fn=_preconditions,
+    equivalent_cli="xsource request new",
+    total=5,
 )
 
 
 def register_all() -> None:
-    """Register xsource's cockpit capabilities. Idempotent (register by
-    key). Doctor is a framework-special; add it so the toolkit shows a health
-    shelf. TODO(xsource): register real capabilities here."""
+    """Register xsource's cockpit capabilities."""
     register_capability(
         CapabilitySpec(
-            key="example",
+            key="request.new",
             shelf="A",
-            title="Example capability",
-            summary="A scaffolded read-only example — replace with real tools.",
-            equivalent_cli="xsource example",
-            run=_example_handler,
-            blast_radius=_EXAMPLE_BLAST,
+            title="New request",
+            summary="Plain-English need to a pre-filled supplier shortlist Sheet.",
+            equivalent_cli="xsource request new",
+            run=_request_new_handler,
+            blast_radius=_REQUEST_NEW_BLAST,
         )
     )
+    for key, shelf, title, summary, cli in (
+        ("request.list", "B", "List requests", "Show open and recent procurement requests.", "xsource request list"),
+        ("book.search", "C", "Search black book", "Search saved suppliers by name, category, or tag.", "xsource book search"),
+        ("book.import", "C", "Import black book", "Seed the supplier store from CSV.", "xsource book import"),
+        ("book.publish", "D", "Publish staff directory", "Regenerate the read-only staff supplier directory.", "xsource book publish"),
+    ):
+        register_capability(
+            CapabilitySpec(
+                key=key,
+                shelf=shelf,
+                title=title,
+                summary=summary,
+                equivalent_cli=cli,
+                run=None,
+            )
+        )
     register_capability(
         CapabilitySpec(
             key="doctor",
             shelf="G",
             title="Doctor",
-            summary="Deep health check — auth, freshness, config.",
+            summary="Deep health check - auth, freshness, config.",
             equivalent_cli="xsource doctor",
-            run=None,  # the shell's Doctor loop handles this key specially
+            run=None,
         )
     )
 
 
-# --- state snapshot (pure-read, network-free) ------------------------------
 def capture_state() -> CockpitState:
-    """xsource's cockpit state — pure-read, no network (the home loop
-    re-calls this on every redraw). Scaffolded with a stub pulse pill and a stub
-    needs-you item so all three regions render. TODO(xsource): populate
-    from a real status report."""
+    """xsource's cockpit state."""
+    report = _status()
+    cfg: Config = report["cfg"]
+    suppliers = report["suppliers"]
+    requests_ = report["requests"]
+    budget: Budget = report["budget"]
+    supplier_count = len(suppliers.all()) if suppliers is not None else 0
+    request_records = requests_.all() if requests_ is not None else []
+    open_requests = [r for r in request_records if getattr(r, "status", "") == "open"]
+    budget_level = budget.level()
+
+    needs = []
+    now = dt.datetime.now(dt.UTC)
+    for request in open_requests:
+        try:
+            created = dt.datetime.fromisoformat(request.created_at)
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=dt.UTC)
+            age_days = (now - created.astimezone(dt.UTC)).days
+        except ValueError:
+            age_days = 0
+        if age_days >= cfg.chase_after_days:
+            needs.append(
+                NeedsItem(
+                    title=f"Follow up {request.id}",
+                    detail=f"{age_days}d open",
+                    level="warn",
+                    capability_key="request.list",
+                )
+            )
+    if not needs:
+        needs.append(
+            NeedsItem(
+                title="Ready for new request",
+                detail="Use A to start supplier research.",
+                level="ok",
+                capability_key="request.new",
+            )
+        )
+
+    store_online = _store_online(suppliers, requests_)
     return CockpitState(
         tenant_name="Auto-Procurer",
         app_label=_APP_LABEL,
         date_label="",
         time_label="",
         pills=(
+            Pill(label="black book", status=str(supplier_count), detail="suppliers", level="ok"),
             Pill(
-                label="xsource",
-                status="scaffolded",
-                detail="fill in real sources",
-                level="ok",
+                label="open requests",
+                status=str(len(open_requests)),
+                detail="active",
+                level="warn" if open_requests else "ok",
+            ),
+            Pill(
+                label="research budget",
+                status=budget_level,
+                detail=f"£{budget.spent():.2f}",
+                level="error" if budget_level == "blocked" else budget_level,
+            ),
+            Pill(
+                label="store",
+                status="online" if store_online else "offline",
+                detail="GCS sync",
+                level="ok" if store_online else "warn",
             ),
         ),
-        needs=(
-            NeedsItem(
-                title="Wire up xsource",
-                detail="Replace the cockpit/signals stubs with real domain logic.",
-                level="warn",
-                capability_key=None,
-            ),
-        ),
-        # The worker's own shelf taxonomy (not xbook's default A–G), so the
-        # toolkit region names xsource's shelves.
+        needs=tuple(needs),
         shelves=_SHELVES,
         toolkit_label="toolkit",
     )
 
 
-# --- a walk's WizardContext bound to the alt-screen ------------------------
 def build_walk_ctx(screen, read_key, *, focus: str | None = None) -> WizardContext:
     return WizardContext(
         state={},
@@ -140,64 +300,73 @@ def build_walk_ctx(screen, read_key, *, focus: str | None = None) -> WizardConte
     )
 
 
-# --- pulse pill activation -------------------------------------------------
 def activate_pill(pill, screen, read_key) -> None:
-    """⏎ on a pulse pill. Scaffolded as a read-only note. TODO(xsource):
-    wire the worker's sync / refresh action (read-only, no-login)."""
-    screen.update(render.render_note("xsource", "Pulse activation is a stub — wire a sync."))
+    screen.update(render.render_note("xsource", "No manual refresh is needed in P1."))
     read_key()
 
 
-# --- Doctor stub -----------------------------------------------------------
 def doctor_build_report() -> object:
-    """Build the worker's status report. Raising here degrades the Doctor to a
-    setup hint (the unconfigured path). TODO(xsource): return a real
-    status object."""
-    return object()
+    return _status()
 
 
 def doctor_build_probes(report: object) -> list[Probe]:
-    """Turn the report into probes. Scaffolded with one OK probe so the Doctor
-    table renders. TODO(xsource): add real auth/freshness/config probes."""
+    cfg: Config = report["cfg"]  # type: ignore[index]
+    suppliers = report["suppliers"]  # type: ignore[index]
+    requests_ = report["requests"]  # type: ignore[index]
+    budget: Budget = report["budget"]  # type: ignore[index]
+    sheets_token = os.environ.get("XSOURCE_SHEETS_TOKEN_PATH", "")
+    store_online = _store_online(suppliers, requests_)
     return [
         Probe(
-            name="Scaffold",
-            level="ok",
-            detail="Generated worker — replace probes with real checks.",
-            fix=Fix(
-                title="Fill in Doctor probes",
-                cmd="edit src/xsource/cli/cockpit.py",
-                note="See xbook.cockpit.doctor for a worked example.",
-                run=None,  # display-only
-            ),
-        )
+            name="Google Maps key",
+            level="ok" if os.environ.get("GOOGLE_MAPS_API_KEY") else "error",
+            detail="present" if os.environ.get("GOOGLE_MAPS_API_KEY") else "missing",
+            fix=Fix("Set GOOGLE_MAPS_API_KEY", "export GOOGLE_MAPS_API_KEY=...", run=None),
+        ),
+        Probe(
+            name="Anthropic key",
+            level="ok" if os.environ.get("ANTHROPIC_API_KEY") else "error",
+            detail="present" if os.environ.get("ANTHROPIC_API_KEY") else "missing",
+            fix=Fix("Set ANTHROPIC_API_KEY", "export ANTHROPIC_API_KEY=...", run=None),
+        ),
+        Probe(
+            name="Sheets token",
+            level="ok" if sheets_token and Path(sheets_token).exists() else "error",
+            detail=sheets_token or "missing",
+            fix=Fix("Set XSOURCE_SHEETS_TOKEN_PATH", "export XSOURCE_SHEETS_TOKEN_PATH=...", run=None),
+        ),
+        Probe(
+            name="Store",
+            level="ok" if store_online else "warn",
+            detail="online" if store_online else "offline read-only cache",
+            fix=None,
+        ),
+        Probe(
+            name="Budget",
+            level="error" if budget.level() == "blocked" else budget.level(),
+            detail=f"{budget.level()} (£{budget.spent():.2f})",
+            fix=None,
+        ),
+        Probe(
+            name="Home postcode",
+            level="ok" if cfg.home_postcode else "error",
+            detail=cfg.home_postcode or "missing",
+            fix=Fix("Set XSOURCE_HOME_POSTCODE", "export XSOURCE_HOME_POSTCODE=...", run=None),
+        ),
     ]
 
 
 def doctor_unconfigured_renderable() -> RenderableType:
-    return render.render_note(
-        "xsource doctor",
-        "Worker not configured yet — fill in doctor_build_report().",
-    )
+    return render.render_note("xsource doctor", "Doctor could not build a report.")
 
 
 def _on_open() -> None:
-    """Fired once per cockpit open: register capabilities + best-effort Signal
-    emit (flag-guarded, default off). Kept off the per-redraw path."""
     register_all()
     with contextlib.suppress(Exception):
         signals_emit.scan_and_emit()
 
 
 def _host(*, agent_mode: bool = False) -> shell.Host:
-    """Build xsource's cockpit Host. ``agent_mode`` (set by ``serve_agent``) threads
-    the dry-run + guarded-apply posture through every walk so an agent driving the real
-    cockpit can navigate any flow but never posts off the explicit gate.
-
-    xsource does not rebuild its host mid-loop, so a parameter is enough — no ambient
-    flag needed. A worker that re-invokes ``_host()`` inside its own callbacks should read an
-    ambient ``_AGENT_MODE`` here instead (see clonway-cockpit docs/agent-screen-model.md →
-    'Wiring a worker to the agent channel')."""
     return shell.Host(
         capture_state=capture_state,
         build_walk_ctx=build_walk_ctx,
@@ -214,8 +383,6 @@ def _host(*, agent_mode: bool = False) -> shell.Host:
 
 
 def run_cockpit(*, read_key=keys.read_key, screen=None) -> None:
-    """Drive the cockpit. With ``screen`` injected (tests) the loop runs against
-    it directly (headless); otherwise it opens the terminal's alternate screen."""
     host = _host()
     if screen is not None:
         host.on_open()
@@ -230,9 +397,6 @@ def run_cockpit(*, read_key=keys.read_key, screen=None) -> None:
 
 
 def serve_agent(*, stdin=sys.stdin, stdout=sys.stdout, allow_apply: bool = False) -> None:
-    """Serve xsource's cockpit to an agent over line-delimited JSON on stdin/stdout —
-    the SAME cockpit a human drives, in agent mode (dry-run; ``allow_apply`` opts into the
-    guarded-apply token handshake). Reached via ``xsource --agent-stdio``."""
     from clonway_cockpit.agent import serve_agent_stdio
 
     serve_agent_stdio(_host(agent_mode=True), stdin=stdin, stdout=stdout, allow_apply=allow_apply)

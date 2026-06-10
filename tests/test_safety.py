@@ -36,10 +36,8 @@ def test_write_gate_accepts_only_confirm_keys() -> None:
         assert walk.confirm_apply(_ctx(read_key=lambda k=key: k), equivalent_cli="x") is False
 
 
-def test_example_capability_is_read_only() -> None:
-    # The scaffolded capability declares a read-only blast radius — the safety
-    # floor a generated worker starts from (no fabricated writes, nothing to send).
+def test_request_new_declares_no_email_send_or_draft() -> None:
     cockpit.register_all()
-    spec = next(s for s in registry.get_capabilities() if s.key == "example")
+    spec = next(s for s in registry.get_capabilities() if s.key == "request.new")
     assert spec.blast_radius is not None
-    assert "read-only" in spec.blast_radius.summary.lower()
+    assert "does not send or draft" in spec.blast_radius.summary.lower()

@@ -44,11 +44,11 @@ def test_cockpit_opens_three_region_shell() -> None:
     assert "needs you" in frame  # region 2
     assert "toolkit" in frame  # region 3
     assert "xsource" in frame  # the worker's identity (header + pulse)
-    assert "Wire up xsource" in frame  # the needs-you stub item
-    assert "Capabilities" in frame  # the worker's own shelf label (toolkit)
+    assert "Ready for new request" in frame
+    assert "New request" in frame  # the worker's own shelf label (toolkit)
 
 
-def test_cockpit_registers_example_and_doctor() -> None:
+def test_cockpit_registers_p1_capabilities_and_doctor() -> None:
     cockpit.register_all()
     registered = {s.key for s in registry.get_capabilities()}
-    assert {"example", "doctor"} <= registered
+    assert {"request.new", "request.list", "book.search", "book.import", "book.publish", "doctor"} <= registered
