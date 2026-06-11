@@ -132,3 +132,49 @@ def test_watcher_health_signal_when_open_thread_poll_is_stale() -> None:
     assert signals[0].kind == "anomaly.detected"
     assert signals[0].dedup_key == "xsource|watcher"
     assert signals[0].source_id == "watcher"
+
+
+def test_build_store_offline_signals_emits_when_offline_with_open_requests():
+    from xsource.signals.build import build_store_offline_signals
+
+    requests = [
+        Request(
+            id="r-1",
+            created_at="2026-06-01T00:00:00+00:00",
+            raw_need="plumbing",
+            status="open",
+        )
+    ]
+    signals = build_store_offline_signals(
+        requests, today=_TODAY, now=_NOW, store_offline=True
+    )
+    assert len(signals) == 1
+    assert signals[0].kind == "anomaly.detected"
+    assert signals[0].dedup_key == "xsource|store_offline"
+    assert signals[0].level == "error"
+
+
+def test_build_store_offline_signals_silent_when_online():
+    from xsource.signals.build import build_store_offline_signals
+
+    requests = [
+        Request(
+            id="r-1",
+            created_at="2026-06-01T00:00:00+00:00",
+            raw_need="plumbing",
+            status="open",
+        )
+    ]
+    signals = build_store_offline_signals(
+        requests, today=_TODAY, now=_NOW, store_offline=False
+    )
+    assert signals == ()
+
+
+def test_build_store_offline_signals_silent_when_no_open_requests():
+    from xsource.signals.build import build_store_offline_signals
+
+    signals = build_store_offline_signals(
+        [], today=_TODAY, now=_NOW, store_offline=True
+    )
+    assert signals == ()

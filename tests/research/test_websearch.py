@@ -50,3 +50,72 @@ def test_searcher_failure_returns_empty_and_does_not_raise():
             raise RuntimeError("api down")
 
     assert search_directory("x", "Y", "yell.com", searcher=Boom()) == []
+
+
+# --- AnthropicSearcher fallback chain tests ---
+
+
+class _OverloadedError(Exception):
+    pass
+
+
+class _AuthError(Exception):
+    pass
+
+
+def _make_searcher(model_chain, side_effects):
+    from xsource.research.websearch import AnthropicSearcher
+
+    searcher = object.__new__(AnthropicSearcher)
+    searcher.model_chain = list(model_chain)
+    call_log = []
+
+    def _extract_with_model(model, query, schema):
+        call_log.append(model)
+        exc = side_effects.get(model)
+        if exc is not None:
+            raise exc
+        return {"candidates": []}
+
+    searcher._extract_with_model = _extract_with_model  # type: ignore[method-assign]
+    return searcher, call_log
+
+
+def test_searcher_fallback_emits_obs_event(monkeypatch):
+    import xsource.research.websearch as ws_mod
+
+    monkeypatch.setattr(
+        ws_mod, "_is_retriable_error", lambda exc: isinstance(exc, _OverloadedError)
+    )
+    events = []
+    monkeypatch.setattr("xsource.obs.event", lambda name, **kw: events.append(name))
+
+    searcher, calls = _make_searcher(
+        ["model-a", "model-b"],
+        {"model-a": _OverloadedError("overloaded")},
+    )
+    result = searcher.extract("query", {})
+    assert result == {"candidates": []}
+    assert calls == ["model-a", "model-b"]
+    assert "gateway.model_fallback" in events
+
+
+def test_searcher_no_fallback_on_non_retriable(monkeypatch):
+    import xsource.research.websearch as ws_mod
+
+    monkeypatch.setattr(
+        ws_mod, "_is_retriable_error", lambda exc: isinstance(exc, _OverloadedError)
+    )
+    events = []
+    monkeypatch.setattr("xsource.obs.event", lambda name, **kw: events.append(name))
+
+    searcher, calls = _make_searcher(
+        ["model-a", "model-b"],
+        {"model-a": _AuthError("bad key")},
+    )
+    import pytest
+
+    with pytest.raises(_AuthError):
+        searcher.extract("query", {})
+    assert calls == ["model-a"]
+    assert "gateway.model_fallback" not in events

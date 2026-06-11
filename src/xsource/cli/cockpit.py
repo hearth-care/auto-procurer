@@ -31,7 +31,7 @@ from xsource.research.triage import Triage, run_triage
 from xsource.secrets import secret_from_env
 from xsource.sheet.client import SheetClient
 from xsource.signals import emit as signals_emit
-from xsource.store.remote import SyncedStore
+from xsource.store.remote import SyncedStore, get_offline_reason
 from xsource.wiring import build_budget, build_research_fns, build_stores
 
 _APP_LABEL = "xsource"
@@ -159,16 +159,38 @@ def _need_step(ctx: WizardContext, bag: dict) -> StepResult:
     )
 
 
+def _is_retriable_anthropic_error(exc: Exception) -> bool:
+    """Return True for availability errors that warrant trying the next model.
+
+    Auth errors and bad-request errors are NOT retriable — they indicate a
+    misconfiguration that a different model cannot fix.
+    """
+    err_type = type(exc).__name__
+    # anthropic SDK raises these for availability/overload; everything else
+    # (AuthenticationError, BadRequestError) is a hard failure.
+    return err_type in {"InternalServerError", "OverloadedError", "APIStatusError"}
+
+
 class _AnthropicStructuredGateway:
-    def __init__(self) -> None:
+    def __init__(self, model_chain: list[str] | None = None) -> None:
         import anthropic
 
         self.client = anthropic.Anthropic(api_key=secret_from_env("ANTHROPIC_API_KEY"))
-        self.model = os.environ.get("XSOURCE_RESEARCH_MODEL", "claude-sonnet-4-6")
+        if model_chain:
+            self.model_chain = list(model_chain)
+        else:
+            single = os.environ.get("XSOURCE_RESEARCH_MODEL", "")
+            chain_env = os.environ.get("XSOURCE_MODEL_CHAIN", "")
+            if chain_env:
+                self.model_chain = [m.strip() for m in chain_env.split(",") if m.strip()]
+            elif single:
+                self.model_chain = [single]
+            else:
+                self.model_chain = ["claude-sonnet-4-6"]
 
-    def complete_structured(self, messages, schema, role: str = "research") -> dict:
+    def _call_model(self, model: str, messages, schema) -> dict:
         resp = self.client.messages.create(
-            model=self.model,
+            model=model,
             max_tokens=1200,
             tools=[
                 {
@@ -187,11 +209,35 @@ class _AnthropicStructuredGateway:
                 and getattr(block_any, "name", None) == "report"
             ):
                 return cast(dict, block_any.input)
-        raise RuntimeError(f"{role} model returned no report tool call")
+        raise RuntimeError(f"model {model} returned no report tool call")
+
+    def complete_structured(self, messages, schema, role: str = "research") -> dict:
+        from xsource.obs import event as obs_event
+
+        last_exc: Exception | None = None
+        for i, model in enumerate(self.model_chain):
+            try:
+                return self._call_model(model, messages, schema)
+            except Exception as exc:
+                if not _is_retriable_anthropic_error(exc) or i == len(self.model_chain) - 1:
+                    raise
+                obs_event(
+                    "gateway.model_fallback",
+                    severity="warn",
+                    role=role,
+                    failed_model=model,
+                    next_model=self.model_chain[i + 1],
+                    error=str(exc),
+                )
+                last_exc = exc
+        raise RuntimeError(f"{role} model chain exhausted") from last_exc
 
 
 def _triage_step(ctx: WizardContext, bag: dict) -> StepResult:
-    triage = run_triage(bag["raw_need"], bag["constraints"], _AnthropicStructuredGateway())
+    cfg = Config.from_env()
+    triage = run_triage(
+        bag["raw_need"], bag["constraints"], _AnthropicStructuredGateway(cfg.model_chain)
+    )
     return StepResult(ok=True, data={"triage": triage.to_dict()})
 
 
@@ -322,7 +368,7 @@ def _outreach_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
         requests=requests_,
         draft_client=SafeOutreachClient(service),
         now=dt.datetime.now(dt.UTC),
-        gateway=_AnthropicStructuredGateway(),
+        gateway=_AnthropicStructuredGateway(Config.from_env().model_chain),
     )
     return StepResult(
         ok=True,
@@ -450,7 +496,7 @@ def register_all() -> None:
             shelf="G",
             title="Doctor",
             summary="Deep health check - auth, freshness, config.",
-            equivalent_cli="xsource doctor",
+            equivalent_cli="xsource",
             run=None,
         )
     )
@@ -498,32 +544,51 @@ def capture_state() -> CockpitState:
         )
 
     store_online = _store_online(suppliers, requests_)
+
+    pending_review = sum(
+        1
+        for request in open_requests
+        for entry in request.watcher.get("possible_replies", [])
+        if entry.get("status") == "needs_review"
+    )
+
+    pills: list[Pill] = [
+        Pill(label="black book", status=str(supplier_count), detail="suppliers", level="ok"),
+        Pill(
+            label="open requests",
+            status=str(len(open_requests)),
+            detail="active",
+            level="warn" if open_requests else "ok",
+        ),
+        Pill(
+            label="research budget",
+            status=budget_level,
+            detail=f"£{budget.spent():.2f}",
+            level="error" if budget_level == "blocked" else budget_level,
+        ),
+        Pill(
+            label="store",
+            status="online" if store_online else "offline",
+            detail="GCS sync — new data is not persisting" if not store_online else "GCS sync",
+            level="ok" if store_online else "error",
+        ),
+    ]
+    if pending_review:
+        pills.append(
+            Pill(
+                label="pending replies",
+                status=str(pending_review),
+                detail="needs review",
+                level="warn",
+            )
+        )
+
     return CockpitState(
         tenant_name="Auto-Procurer",
         app_label=_APP_LABEL,
         date_label="",
         time_label="",
-        pills=(
-            Pill(label="black book", status=str(supplier_count), detail="suppliers", level="ok"),
-            Pill(
-                label="open requests",
-                status=str(len(open_requests)),
-                detail="active",
-                level="warn" if open_requests else "ok",
-            ),
-            Pill(
-                label="research budget",
-                status=budget_level,
-                detail=f"£{budget.spent():.2f}",
-                level="error" if budget_level == "blocked" else budget_level,
-            ),
-            Pill(
-                label="store",
-                status="online" if store_online else "offline",
-                detail="GCS sync",
-                level="ok" if store_online else "warn",
-            ),
-        ),
+        pills=tuple(pills),
         needs=tuple(needs),
         shelves=_SHELVES,
         toolkit_label="toolkit",
@@ -582,8 +647,17 @@ def doctor_build_probes(report: object) -> list[Probe]:
         ),
         Probe(
             name="Store",
-            level="ok" if store_online else "warn",
-            detail="online" if store_online else "offline read-only cache",
+            level="ok" if store_online else "error",
+            detail="online"
+            if store_online
+            else (
+                "offline — new data is not persisting"
+                + (
+                    f" ({get_offline_reason('state/xsource/suppliers.jsonl')})"
+                    if get_offline_reason("state/xsource/suppliers.jsonl")
+                    else ""
+                )
+            ),
             fix=None,
         ),
         Probe(

@@ -111,6 +111,11 @@ def process_once(
 
     for request in open_requests:
         known_threads = _thread_ids(request)
+        # Collect (message_id, action) pairs for messages processed this cycle.
+        # We defer state.mark_processed until AFTER requests.upsert so a failed
+        # persist never strands a message id in the dedup store (S2 ordering fix).
+        pending_marks: list[tuple[str, str]] = []
+
         for thread_id in known_threads:
             for message in gmail.list_thread_messages(thread_id):
                 if state.seen(message.id):
@@ -127,8 +132,7 @@ def process_once(
                                 asked_at=message.received_at,
                                 updated_at=now,
                             )
-                        state.mark_processed(message.id, "sent")
-                        processed += 1
+                        pending_marks.append((message.id, "sent"))
                     continue
                 parsed = parse_supplier_reply(message.body, gateway)
                 if apply_reply_to_request(
@@ -145,8 +149,8 @@ def process_once(
                             received_at=message.received_at,
                             updated_at=now,
                         )
-                    state.mark_processed(message.id, "parsed")
-                    processed += 1
+                    pending_marks.append((message.id, "parsed"))
+
         possible_replies += _flag_possible_replies(
             request=request,
             suppliers_by_id=supplier_records,
@@ -156,6 +160,11 @@ def process_once(
         request.watcher["last_checked_at"] = _iso(now)
         if request.sheet_id:
             sheets.update_heartbeat(request.sheet_id, now)
+        # Persist the updated request first.  Only mark messages processed when
+        # we know the updated state has been durably written to GCS.
         requests.upsert(request)
+        for message_id, action in pending_marks:
+            state.mark_processed(message_id, action)
+        processed += len(pending_marks)
 
     return {"processed": processed, "possible_replies": possible_replies}

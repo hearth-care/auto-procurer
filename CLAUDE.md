@@ -23,3 +23,18 @@ same code path. This is enforced, not aspirational:
 - **The protocol is versioned.** Frames carry `schema_version`; a breaking change bumps it.
 
 See clonway-cockpit `docs/agent-screen-model.md` for the full protocol + the wiring recipe.
+
+## Bumping the framework pin
+
+`pyproject.toml → [tool.uv.sources] → clonway-cockpit → rev` must always be a full
+40-character commit SHA (or a `vX.Y.Z` tag once the framework publishes releases).
+`tests/test_dependency_pins.py` fails CI if a branch name is committed.
+
+**Procedure:**
+
+1. Pick the target commit SHA from `hearth-care/clonway-cockpit`.
+2. Update `rev` in `pyproject.toml`.
+3. Run `uv lock` to regenerate `uv.lock`.
+4. Run `uv run pytest -q` — full local suite must be green.
+5. Note the framework delta (commits included) in the PR body.
+6. Commit `pyproject.toml` + `uv.lock` together in one commit.

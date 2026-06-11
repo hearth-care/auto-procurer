@@ -23,12 +23,23 @@ class Config:
     monthly_budget_gbp: float
     chase_after_days: int
     poll_seconds: int
+    max_backoff_seconds: int
+    breaker_threshold: int
     drive_folder_id: str | None
     staff_share_group: str | None
     state_dir: str
+    model_chain: list[str]
 
     @classmethod
     def from_env(cls) -> Config:
+        raw_chain = os.environ.get("XSOURCE_MODEL_CHAIN", "")
+        single = os.environ.get("XSOURCE_RESEARCH_MODEL", "")
+        if raw_chain:
+            chain = [m.strip() for m in raw_chain.split(",") if m.strip()]
+        elif single:
+            chain = [single]
+        else:
+            chain = ["claude-sonnet-4-6"]
         return cls(
             home_postcode=os.environ.get("XSOURCE_HOME_POSTCODE") or None,
             default_radius_miles=_int("XSOURCE_DEFAULT_RADIUS_MILES", 15),
@@ -38,9 +49,12 @@ class Config:
             monthly_budget_gbp=float(os.environ.get("XSOURCE_MONTHLY_BUDGET_GBP", "10")),
             chase_after_days=_int("XSOURCE_CHASE_AFTER_DAYS", 3),
             poll_seconds=_int("XSOURCE_POLL_SECONDS", 60),
+            max_backoff_seconds=_int("XSOURCE_MAX_BACKOFF_SECONDS", 300),
+            breaker_threshold=_int("XSOURCE_BREAKER_THRESHOLD", 10),
             drive_folder_id=os.environ.get("XSOURCE_DRIVE_FOLDER_ID") or None,
             staff_share_group=os.environ.get("XSOURCE_STAFF_SHARE_GROUP") or None,
             state_dir=os.environ.get(
                 "XSOURCE_STATE_DIR", os.path.expanduser("~/.claude-inbox/xsource/state")
             ),
+            model_chain=chain,
         )

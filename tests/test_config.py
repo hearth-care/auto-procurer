@@ -27,3 +27,23 @@ def test_overrides(monkeypatch):
 def test_missing_postcode_is_none(monkeypatch):
     monkeypatch.delenv("XSOURCE_HOME_POSTCODE", raising=False)
     assert Config.from_env().home_postcode is None
+
+
+def test_model_chain_defaults_to_sonnet(monkeypatch):
+    monkeypatch.delenv("XSOURCE_MODEL_CHAIN", raising=False)
+    monkeypatch.delenv("XSOURCE_RESEARCH_MODEL", raising=False)
+    cfg = Config.from_env()
+    assert cfg.model_chain == ["claude-sonnet-4-6"]
+
+
+def test_model_chain_from_env(monkeypatch):
+    monkeypatch.setenv("XSOURCE_MODEL_CHAIN", "claude-opus-4-8, claude-sonnet-4-6")
+    cfg = Config.from_env()
+    assert cfg.model_chain == ["claude-opus-4-8", "claude-sonnet-4-6"]
+
+
+def test_model_chain_from_research_model_fallback(monkeypatch):
+    monkeypatch.delenv("XSOURCE_MODEL_CHAIN", raising=False)
+    monkeypatch.setenv("XSOURCE_RESEARCH_MODEL", "claude-haiku-4-5-20251001")
+    cfg = Config.from_env()
+    assert cfg.model_chain == ["claude-haiku-4-5-20251001"]

@@ -206,6 +206,38 @@ def build_watcher_health_signals(
     return ()
 
 
+def build_store_offline_signals(
+    requests: Sequence[Request],
+    *,
+    today: Date,
+    now: datetime,
+    store_offline: bool,
+) -> tuple[Signal, ...]:
+    if not store_offline:
+        return ()
+    open_requests = [r for r in requests if r.status == "open"]
+    if not open_requests:
+        return ()
+    return (
+        _signal(
+            kind="anomaly.detected",
+            title="xsource GCS store offline",
+            detail=(
+                f"{len(open_requests)} open request(s) — new data is not persisting."
+                " Check GCS credentials and open xsource cockpit (Doctor screen)."
+            ),
+            level="error",
+            urgency="high",
+            dedup_key="xsource|store_offline",
+            emitted_at=now,
+            due_at=today,
+            capability_key="doctor",
+            focus="store",
+            source_id="store",
+        ),
+    )
+
+
 @scan_horizon
 def scan_xsource_horizon(*, today: Date, now: datetime) -> Sequence[Signal]:
     cfg = Config.from_env()
@@ -213,6 +245,7 @@ def scan_xsource_horizon(*, today: Date, now: datetime) -> Sequence[Signal]:
         suppliers, requests = build_stores(cfg)
         request_records = requests.all()
         supplier_records = suppliers.all()
+        store_offline = suppliers.offline or requests.offline
         return (
             *build_chase_quote_signals(
                 request_records,
@@ -222,6 +255,12 @@ def scan_xsource_horizon(*, today: Date, now: datetime) -> Sequence[Signal]:
             ),
             *build_recurring_service_signals(supplier_records, today=today, now=now),
             *build_watcher_health_signals(request_records, today=today, now=now),
+            *build_store_offline_signals(
+                request_records,
+                today=today,
+                now=now,
+                store_offline=store_offline,
+            ),
         )
     return ()
 

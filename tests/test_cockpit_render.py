@@ -59,3 +59,148 @@ def test_cockpit_registers_p1_capabilities_and_doctor() -> None:
         "book.publish",
         "doctor",
     } <= registered
+
+
+def _make_capture_state(*, store_online=True, pending_replies=0):
+    """Build a patched capture_state that injects controlled store/reply state."""
+    from unittest.mock import MagicMock
+
+    from xsource.store.models import Request
+
+    # Build a mock request with pending replies if needed
+    possible_replies = [
+        {"message_id": f"msg-{i}", "status": "needs_review"} for i in range(pending_replies)
+    ]
+    request = Request(
+        id="r-test",
+        created_at="2026-06-01T00:00:00+00:00",
+        raw_need="plumbing",
+        status="open",
+        watcher={"possible_replies": possible_replies} if possible_replies else {},
+    )
+
+    class _FakeStore:
+        offline = not store_online
+
+        def all(self):
+            return [request]
+
+        def get(self, rec_id):
+            return None
+
+    from xsource.cli import cockpit as _cockpit
+
+
+    def _patched_status():
+        from xsource.config import Config
+
+        cfg = Config.from_env()
+        s = _FakeStore()
+        budget = MagicMock()
+        budget.level.return_value = "ok"
+        budget.spent.return_value = 0.0
+        budget.allow_new_run.return_value = True
+        return {"cfg": cfg, "suppliers": s, "requests_": s, "budget": budget}
+
+    return _patched_status, _cockpit
+
+
+def test_store_pill_is_error_when_offline(monkeypatch):
+    from xsource.cli import cockpit as _cockpit
+
+    class _FakeOfflineStore:
+        offline = True
+
+        def all(self):
+            return []
+
+    from unittest.mock import MagicMock
+
+    def _patched_status():
+        from xsource.config import Config
+
+        cfg = Config.from_env()
+        budget = MagicMock()
+        budget.level.return_value = "ok"
+        budget.spent.return_value = 0.0
+        return {
+            "cfg": cfg,
+            "suppliers": _FakeOfflineStore(),
+            "requests": _FakeOfflineStore(),
+            "budget": budget,
+        }
+
+    monkeypatch.setattr(_cockpit, "_status", _patched_status)
+    state = _cockpit.capture_state()
+    store_pill = next(p for p in state.pills if p.label == "store")
+    assert store_pill.level == "error"
+    assert "not persisting" in store_pill.detail
+
+
+def test_pending_replies_pill_present_when_nonzero(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from xsource.cli import cockpit as _cockpit
+    from xsource.store.models import Request
+
+    request = Request(
+        id="r-1",
+        created_at="2026-06-01T00:00:00+00:00",
+        raw_need="plumbing",
+        status="open",
+        watcher={
+            "possible_replies": [
+                {"message_id": "m1", "status": "needs_review"},
+                {"message_id": "m2", "status": "needs_review"},
+            ]
+        },
+    )
+
+    class _FakeStore:
+        offline = False
+
+        def all(self):
+            return [request]
+
+    def _patched_status():
+        from xsource.config import Config
+
+        cfg = Config.from_env()
+        budget = MagicMock()
+        budget.level.return_value = "ok"
+        budget.spent.return_value = 0.0
+        return {"cfg": cfg, "suppliers": _FakeStore(), "requests": _FakeStore(), "budget": budget}
+
+    monkeypatch.setattr(_cockpit, "_status", _patched_status)
+    state = _cockpit.capture_state()
+    pill_labels = {p.label for p in state.pills}
+    assert "pending replies" in pill_labels
+    pending_pill = next(p for p in state.pills if p.label == "pending replies")
+    assert pending_pill.status == "2"
+    assert pending_pill.level == "warn"
+
+
+def test_no_pending_replies_pill_when_zero(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from xsource.cli import cockpit as _cockpit
+
+    class _FakeStore:
+        offline = False
+
+        def all(self):
+            return []
+
+    def _patched_status():
+        from xsource.config import Config
+
+        cfg = Config.from_env()
+        budget = MagicMock()
+        budget.level.return_value = "ok"
+        budget.spent.return_value = 0.0
+        return {"cfg": cfg, "suppliers": _FakeStore(), "requests": _FakeStore(), "budget": budget}
+
+    monkeypatch.setattr(_cockpit, "_status", _patched_status)
+    state = _cockpit.capture_state()
+    pill_labels = {p.label for p in state.pills}
+    assert "pending replies" not in pill_labels

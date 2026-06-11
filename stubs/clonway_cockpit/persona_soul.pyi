@@ -1,0 +1,3 @@
+from typing import Any
+
+def compose_system_prompt(*args: Any, **kwargs: Any) -> str: ...
