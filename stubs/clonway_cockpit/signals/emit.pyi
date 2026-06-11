@@ -1,5 +1,7 @@
-from typing import Any, Callable, Sequence
+from collections.abc import Callable, Sequence
 from datetime import date, datetime
+from typing import Any
+
 from clonway_cockpit.signals.model import Signal
 
 def emit_signals(

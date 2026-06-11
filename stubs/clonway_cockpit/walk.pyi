@@ -1,5 +1,6 @@
-from typing import Any, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 @dataclass
 class Precondition:
@@ -10,7 +11,7 @@ class Precondition:
 @dataclass
 class Step:
     label: str
-    run: Callable[[Any, dict[str, Any]], "StepResult"]
+    run: Callable[[Any, dict[str, Any]], StepResult]
 
 @dataclass
 class StepResult:

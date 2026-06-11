@@ -56,7 +56,7 @@ def run_loop(
             if consecutive_failures >= breaker_threshold:
                 if on_breaker_open is not None:
                     on_breaker_open(consecutive_failures)
-                raise CircuitBreakerOpen(consecutive_failures)
+                raise CircuitBreakerOpen(consecutive_failures) from exc
             backoff = min(poll_seconds * (2 ** (consecutive_failures - 1)), max_backoff_seconds)
             sleep_seconds = float(backoff)
 

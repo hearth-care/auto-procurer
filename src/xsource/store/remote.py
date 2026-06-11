@@ -39,9 +39,24 @@ class SyncedStore:
 
 
 def make_blob(bucket_name: str, blob_path: str):
+    """Return a GCS blob handle, or None on any failure.
+
+    Graceful degradation is intentional for local / credential-less dev.
+    ``_make_blob_offline_reason`` records why so Doctor can surface the cause.
+    """
     try:
         from google.cloud import storage
 
         return storage.Client().bucket(bucket_name).blob(blob_path)
-    except Exception:
+    except Exception as exc:
+        _make_blob_offline_reason = str(exc)
+        _offline_reasons[blob_path] = _make_blob_offline_reason
         return None
+
+
+_offline_reasons: dict[str, str] = {}
+
+
+def get_offline_reason(blob_path: str) -> str | None:
+    """Return the exception message recorded when ``make_blob`` degraded, or None."""
+    return _offline_reasons.get(blob_path)

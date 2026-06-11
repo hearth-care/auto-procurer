@@ -8,6 +8,8 @@ runner = CliRunner()
 
 
 class _EmptyStore:
+    offline = False
+
     def all(self):
         return []
 

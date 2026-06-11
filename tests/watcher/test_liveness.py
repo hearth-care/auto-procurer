@@ -13,6 +13,7 @@ on cycle 1 and zero on cycle 2.
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 
 from xsource.store.models import Request, ShortlistEntry, Supplier
@@ -170,7 +171,7 @@ def test_failed_upsert_does_not_mark_message_processed(tmp_path):
     suppliers_store = _FakeStore([supplier])
     state = ProcessedMessageStore(tmp_path / "watcher.sqlite3")
 
-    try:
+    with contextlib.suppress(RuntimeError):
         process_once(
             requests=requests_store,
             suppliers=suppliers_store,
@@ -180,8 +181,6 @@ def test_failed_upsert_does_not_mark_message_processed(tmp_path):
             state=state,
             now=dt.datetime(2026, 6, 11, 10, 0, tzinfo=dt.UTC),
         )
-    except RuntimeError:
-        pass
 
     # The message must NOT be marked as processed — it is still retryable
     assert not state.seen("msg-live-1")

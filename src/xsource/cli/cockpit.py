@@ -31,7 +31,7 @@ from xsource.research.triage import Triage, run_triage
 from xsource.secrets import secret_from_env
 from xsource.sheet.client import SheetClient
 from xsource.signals import emit as signals_emit
-from xsource.store.remote import SyncedStore
+from xsource.store.remote import SyncedStore, get_offline_reason
 from xsource.wiring import build_budget, build_research_fns, build_stores
 
 _APP_LABEL = "xsource"
@@ -544,32 +544,51 @@ def capture_state() -> CockpitState:
         )
 
     store_online = _store_online(suppliers, requests_)
+
+    pending_review = sum(
+        1
+        for request in open_requests
+        for entry in request.watcher.get("possible_replies", [])
+        if entry.get("status") == "needs_review"
+    )
+
+    pills: list[Pill] = [
+        Pill(label="black book", status=str(supplier_count), detail="suppliers", level="ok"),
+        Pill(
+            label="open requests",
+            status=str(len(open_requests)),
+            detail="active",
+            level="warn" if open_requests else "ok",
+        ),
+        Pill(
+            label="research budget",
+            status=budget_level,
+            detail=f"£{budget.spent():.2f}",
+            level="error" if budget_level == "blocked" else budget_level,
+        ),
+        Pill(
+            label="store",
+            status="online" if store_online else "offline",
+            detail="GCS sync — new data is not persisting" if not store_online else "GCS sync",
+            level="ok" if store_online else "error",
+        ),
+    ]
+    if pending_review:
+        pills.append(
+            Pill(
+                label="pending replies",
+                status=str(pending_review),
+                detail="needs review",
+                level="warn",
+            )
+        )
+
     return CockpitState(
         tenant_name="Auto-Procurer",
         app_label=_APP_LABEL,
         date_label="",
         time_label="",
-        pills=(
-            Pill(label="black book", status=str(supplier_count), detail="suppliers", level="ok"),
-            Pill(
-                label="open requests",
-                status=str(len(open_requests)),
-                detail="active",
-                level="warn" if open_requests else "ok",
-            ),
-            Pill(
-                label="research budget",
-                status=budget_level,
-                detail=f"£{budget.spent():.2f}",
-                level="error" if budget_level == "blocked" else budget_level,
-            ),
-            Pill(
-                label="store",
-                status="online" if store_online else "offline",
-                detail="GCS sync",
-                level="ok" if store_online else "warn",
-            ),
-        ),
+        pills=tuple(pills),
         needs=tuple(needs),
         shelves=_SHELVES,
         toolkit_label="toolkit",
@@ -628,8 +647,17 @@ def doctor_build_probes(report: object) -> list[Probe]:
         ),
         Probe(
             name="Store",
-            level="ok" if store_online else "warn",
-            detail="online" if store_online else "offline read-only cache",
+            level="ok" if store_online else "error",
+            detail="online"
+            if store_online
+            else (
+                "offline — new data is not persisting"
+                + (
+                    f" ({get_offline_reason('state/xsource/suppliers.jsonl')})"
+                    if get_offline_reason("state/xsource/suppliers.jsonl")
+                    else ""
+                )
+            ),
             fix=None,
         ),
         Probe(

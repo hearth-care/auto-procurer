@@ -1,4 +1,5 @@
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 # Minimal stubs — tracks only the symbols xsource imports.
 # Prefer upstream py.typed when the framework ships it.
