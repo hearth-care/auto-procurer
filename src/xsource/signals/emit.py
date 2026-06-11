@@ -14,6 +14,7 @@ are a no-op until an operator flips it.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from datetime import date as Date
 from datetime import datetime
@@ -25,9 +26,10 @@ from xsource.signals.build import build_xsource_signals
 
 _WORKER_ID = "xsource"
 _FLAG_ENV = "XSOURCE_EMIT_SIGNALS"
-# A launchd daemon's env is HOME-only, so a bare storage.Client() can't resolve
-# a GCP project. Pin it (xquill's deviation). Set to your project before go-live.
-_PROJECT: str | None = "clonway-care-bookkeeper"
+
+
+def _project() -> str | None:
+    return os.environ.get("XSOURCE_GCP_PROJECT") or None
 
 
 def _enabled() -> bool:
@@ -44,7 +46,7 @@ def emit(signals: tuple[Signal, ...], *, now: datetime, run_id: str | None = Non
         worker_id=_WORKER_ID,
         flag_env=_FLAG_ENV,
         build=lambda **_: signals,
-        project=_PROJECT,
+        project=_project(),
         now=now,
         run_id=run_id,
     )
@@ -68,7 +70,7 @@ def scan_and_emit(
         worker_id=_WORKER_ID,
         flag_env=_FLAG_ENV,
         build=_build,
-        project=_PROJECT,
+        project=_project(),
         now=now,
         today=today,
         run_id=run_id,

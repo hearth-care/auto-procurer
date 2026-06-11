@@ -21,13 +21,14 @@ from __future__ import annotations
 from clonway_cockpit import obs as _obs
 
 _WORKER_ID = "xsource"
-_RUNTIME_ENV = None  # launchd daemon — no Cloud Logging mirror
+_RUNTIME_ENV = "XSOURCE_RUNTIME_ENV"
 
 # ``reserved_prefix="f_"`` matches xhr/xletter/xquill (xbook uses "field_"); pick
 # whichever your greppable log conventions expect. The shared core renames any
 # caller field that collides with a LogRecord attribute, prefixed with this.
 event, run_session = _obs.make_obs(
     worker_id=_WORKER_ID,
+    runtime_env=_RUNTIME_ENV,
     reserved_prefix="f_",
 )
 

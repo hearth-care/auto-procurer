@@ -186,11 +186,11 @@ plists — the GCS-synced stores mean state follows whichever runner is active.
 
 ### Phase 2 — secrets + config (M)
 
-- [ ] Secret containers + volume mounts for both OAuth tokens and API keys;
+- [x] Secret containers + volume mounts for both OAuth tokens and API keys;
       Cloud Run env sets the existing `*_PATH`/`*_FILE` variables.
-- [ ] `signals/emit.py` project pin and `obs.py` runtime env become
+- [x] `signals/emit.py` project pin and `obs.py` runtime env become
       environment-derived with launchd-compatible fallbacks.
-- [ ] Operator script (stdlib-only, idempotent, prints every command) to
+- [x] Operator script (stdlib-only, idempotent, prints every command) to
       create bindings; token-provisioning runbook section.
 - Tests: unit tests for env-derived project/runtime fallbacks; manual job run
   reads all credentials from mounts.
@@ -267,7 +267,8 @@ plists — the GCS-synced stores mean state follows whichever runner is active.
 ## HANDOFF NOTES
 
 - Agent: builder-codex-20260611T200954Z-94309.
-- Current phase: Phase 2 next. Phase 1 repo artefacts are implemented in this PR branch.
-- Decisions taken: watcher uses scheduled Cloud Run job with `xsource watcher run --cycles 4 --interval 60`; deploy workflow creates schedulers paused and reads concrete fleet values from repo environment variables/secrets, not checked-in docs.
-- Verification so far: `uv run pytest tests/deploy/test_cloud_run_phase1.py -q` -> 3 passed.
+- Current phase: Phase 3 next. Phase 1 and Phase 2 repo artefacts are implemented in this PR branch.
+- Decisions taken: watcher uses scheduled Cloud Run job with `xsource watcher run --cycles 4 --interval 60`; deploy workflow creates schedulers paused and reads concrete fleet values from repo environment variables/secrets, not checked-in docs. `XSOURCE_RUNTIME_ENV=cloud_run` enables the shared Cloud Logging mirror; signal GCS project now defaults to ADC unless `XSOURCE_GCP_PROJECT` is set for local/legacy use.
+- Operator-only follow-up: manual Cloud Run credential-read smoke still needs real mounted secret values.
+- Verification so far: `uv run pytest tests/deploy/test_cloud_run_phase1.py -q` -> 3 passed; `uv run pytest tests/test_runtime_env.py tests/deploy/test_cloud_run_phase2.py -q` -> 4 passed; `uv run ruff check src/xsource/obs.py src/xsource/signals/emit.py scripts/provision_cloud_run.py tests/test_runtime_env.py tests/deploy/test_cloud_run_phase2.py` -> All checks passed; `uv run mypy src` -> Success.
 - Known failing tests: none from the current targeted slice.
