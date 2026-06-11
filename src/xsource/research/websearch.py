@@ -85,6 +85,8 @@ class AnthropicSearcher:
         return {"candidates": []}
 
     def extract(self, query: str, schema: dict) -> dict:
+        from xsource.obs import event as obs_event
+
         for i, model in enumerate(self.model_chain):
             try:
                 return self._extract_with_model(model, query, schema)
@@ -96,6 +98,14 @@ class AnthropicSearcher:
                     model,
                     exc,
                     self.model_chain[i + 1],
+                )
+                obs_event(
+                    "gateway.model_fallback",
+                    severity="warn",
+                    role="websearch",
+                    failed_model=model,
+                    next_model=self.model_chain[i + 1],
+                    error=str(exc),
                 )
         return {"candidates": []}
 

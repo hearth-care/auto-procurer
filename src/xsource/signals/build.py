@@ -224,7 +224,7 @@ def build_store_offline_signals(
             title="xsource GCS store offline",
             detail=(
                 f"{len(open_requests)} open request(s) — new data is not persisting."
-                " Check GCS credentials and run xsource doctor."
+                " Check GCS credentials and open xsource cockpit (Doctor screen)."
             ),
             level="error",
             urgency="high",

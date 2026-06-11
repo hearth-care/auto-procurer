@@ -15,7 +15,7 @@ from pathlib import Path
 PYPROJECT = Path(__file__).parent.parent / "pyproject.toml"
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-_TAG_RE = re.compile(r"^v\d+\.\d+")
+_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 def test_clonway_cockpit_pin_is_sha_or_tag():
@@ -30,3 +30,15 @@ def test_clonway_cockpit_pin_is_sha_or_tag():
         "Use a full 40-char commit SHA (or a vX.Y.Z tag once the framework ships them). "
         "See CLAUDE.md 'Bumping the framework pin' for the procedure."
     )
+
+
+def test_tag_regex_rejects_non_semver():
+    """_TAG_RE must reject prefix-only refs such as v1.2 or v1.2-main."""
+    assert not _TAG_RE.match("v1.2"), "bare vX.Y prefix should not be accepted"
+    assert not _TAG_RE.match("v1.2-main"), "vX.Y-suffix ref should not be accepted"
+    assert not _TAG_RE.match("main"), "bare branch name should not be accepted"
+
+
+def test_tag_regex_accepts_full_semver():
+    assert _TAG_RE.match("v1.2.3")
+    assert _TAG_RE.match("v10.20.30")

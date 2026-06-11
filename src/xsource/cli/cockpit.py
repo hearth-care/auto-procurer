@@ -496,7 +496,7 @@ def register_all() -> None:
             shelf="G",
             title="Doctor",
             summary="Deep health check - auth, freshness, config.",
-            equivalent_cli="xsource doctor",
+            equivalent_cli="xsource",
             run=None,
         )
     )

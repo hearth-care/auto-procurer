@@ -254,9 +254,9 @@ All phases implemented. No follow-up branch needed.
 
 ## HANDOFF NOTES
 
-**Phase:** DONE — all 4 phases implemented and merged into this PR branch.
-**Last push:** 2026-06-11, rebased onto origin/main (046ae77).
-**Gates:** 146 tests pass, mypy clean, ruff clean.
+**Phase:** DONE — all 4 plan phases + 4 QA findings addressed.
+**Last push:** 2026-06-11, rebased onto origin/main.
+**Gates:** 150 tests pass, mypy clean, ruff clean.
 
 **Deviations from plan:**
 - S9 stubs placed in `stubs/clonway_cockpit/` with `mypy_path = ["stubs"]`;
@@ -269,3 +269,11 @@ All phases implemented. No follow-up branch needed.
 - `_make_blob_offline_reason` variable in `make_blob` is unused (local var);
   reason stored in module-level `_offline_reasons` dict — same operational
   effect, pattern cleaner for test isolation.
+
+**QA findings fixed (fixer-claude-20260611T181542Z-78853):**
+1. Runbook delta posted on hearth-care/auto-orchestrator#196.
+2. `equivalent_cli="xsource doctor"` → `"xsource"` (no CLI doctor subcommand exists;
+   doctor is a cockpit screen). Signal detail updated to say "open xsource cockpit".
+3. `_TAG_RE` anchored to `^v\d+\.\d+\.\d+$`; negative/positive cases added.
+4. `AnthropicSearcher.extract` now emits `gateway.model_fallback` obs event on fallback;
+   two new tests verify obs emission and non-retriable fast-fail.
