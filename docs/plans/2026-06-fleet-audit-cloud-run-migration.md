@@ -207,26 +207,26 @@ plists — the GCS-synced stores mean state follows whichever runner is active.
 
 ### Phase 4 — cutover + decommission (S, operational)
 
-- [ ] Manual verification runs; enable sync+signals schedulers; soak.
-- [ ] Watcher single-runner cutover (unload local watcher, enable cloud).
-- [ ] `launchctl bootout` all three; archive plists; rotate env-file creds.
-- [ ] Update `README.md` runtime section; mark
+- [ ] OPERATOR TODO: Manual verification runs; enable sync+signals schedulers; soak.
+- [ ] OPERATOR TODO: Watcher single-runner cutover (unload local watcher, enable cloud).
+- [ ] OPERATOR TODO: `launchctl bootout` all three; archive plists; rotate env-file creds.
+- [x] Update `README.md` runtime section; mark
       `scripts/install_launchd.py` as legacy/rollback-only in its docstring.
 - Acceptance: one week cloud-only with green executions and heartbeats.
 
 ## Acceptance criteria
 
-- [ ] All three schedules run as Cloud Run jobs in the fleet project with
+- [ ] OPERATOR TODO: All three schedules run as Cloud Run jobs in the fleet project with
       per-execution success/failure visible in cloud monitoring.
-- [ ] No credential or token file is required on (or read from) the operator's
+- [ ] OPERATOR TODO: No credential or token file is required on (or read from) the operator's
       Mac for steady-state operation.
-- [ ] Replies processed exactly once across the cutover (dedup DB migrated,
+- [ ] OPERATOR TODO: Replies processed exactly once across the cutover (dedup DB migrated,
       single-runner rule observed); budget ledger continuity preserved.
-- [ ] Every execution emits a heartbeat the orchestrator can consume; a
+- [x] Every execution emits a heartbeat the orchestrator can consume; a
       skipped/failed execution is distinguishable from a quiet one.
-- [ ] launchd jobs unloaded and archived; documented rollback re-establishes
+- [ ] OPERATOR TODO: launchd jobs unloaded and archived; documented rollback re-establishes
       local operation in under 15 minutes.
-- [ ] No behavioural change to procurement logic; full test suite green; the
+- [ ] FINAL GATE TODO: No behavioural change to procurement logic; full test suite green; the
       draft-only/never-send posture untouched.
 
 ## Risks & dependencies
@@ -267,8 +267,8 @@ plists — the GCS-synced stores mean state follows whichever runner is active.
 ## HANDOFF NOTES
 
 - Agent: builder-codex-20260611T200954Z-94309.
-- Current phase: Phase 4 docs/operator runbook next. Phase 1, Phase 2, and Phase 3 repo artefacts are implemented in this PR branch.
+- Current phase: final gates next. Phase 1, Phase 2, Phase 3, and repo-owned Phase 4 artefacts are implemented in this PR branch.
 - Decisions taken: watcher uses scheduled Cloud Run job with `xsource watcher run --cycles 4 --interval 60`; deploy workflow creates schedulers paused and reads concrete fleet values from repo environment variables/secrets, not checked-in docs. `XSOURCE_RUNTIME_ENV=cloud_run` enables the shared Cloud Logging mirror; signal GCS project now defaults to ADC unless `XSOURCE_GCP_PROJECT` is set for local/legacy use. State blobs use `XSOURCE_FLEET_BUCKET` and `XSOURCE_STATE_PREFIX`; absent bucket keeps local/dev offline instead of committing concrete fleet identifiers.
-- Operator-only follow-up: manual Cloud Run credential-read smoke still needs real mounted secret values.
-- Verification so far: `uv run pytest tests/deploy/test_cloud_run_phase1.py -q` -> 3 passed; `uv run pytest tests/test_runtime_env.py tests/deploy/test_cloud_run_phase2.py -q` -> 4 passed; `uv run pytest tests/test_config.py::test_fleet_state_config_comes_from_env tests/store/test_blob_file.py tests/test_budget.py::test_budget_can_sync_ledger_blob tests/watcher/test_cli_run.py tests/test_heartbeats.py -q` -> 6 passed; targeted ruff checks -> All checks passed; `uv run mypy src` -> Success.
+- Operator-only follow-up: manual Cloud Run credential-read smoke still needs real mounted secret values; live scheduler enablement, watcher cutover, `launchctl bootout`, one-week soak, and credential rotation remain operator steps documented in `docs/runbooks/cloud-run-cutover.md`.
+- Verification so far: `uv run pytest tests/deploy/test_cloud_run_phase1.py -q` -> 3 passed; `uv run pytest tests/test_runtime_env.py tests/deploy/test_cloud_run_phase2.py -q` -> 4 passed; `uv run pytest tests/test_config.py::test_fleet_state_config_comes_from_env tests/store/test_blob_file.py tests/test_budget.py::test_budget_can_sync_ledger_blob tests/watcher/test_cli_run.py tests/test_heartbeats.py -q` -> 6 passed; `uv run pytest tests/deploy/test_cloud_run_phase4.py -q` -> 3 passed; targeted ruff checks -> All checks passed; `uv run mypy src` -> Success.
 - Known failing tests: none from the current targeted slice.

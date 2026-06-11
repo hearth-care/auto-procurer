@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install local launchd jobs for xsource.
+"""Install local launchd jobs for xsource (legacy/rollback-only).
 
 Default is dry-run: print the plist paths and launchctl commands. Use
 ``--write`` to write plists, and ``--load`` to load them after confirmation.
