@@ -90,7 +90,6 @@ def _make_capture_state(*, store_online=True, pending_replies=0):
 
     from xsource.cli import cockpit as _cockpit
 
-
     def _patched_status():
         from xsource.config import Config
 

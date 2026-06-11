@@ -145,9 +145,7 @@ def test_build_store_offline_signals_emits_when_offline_with_open_requests():
             status="open",
         )
     ]
-    signals = build_store_offline_signals(
-        requests, today=_TODAY, now=_NOW, store_offline=True
-    )
+    signals = build_store_offline_signals(requests, today=_TODAY, now=_NOW, store_offline=True)
     assert len(signals) == 1
     assert signals[0].kind == "anomaly.detected"
     assert signals[0].dedup_key == "xsource|store_offline"
@@ -165,16 +163,12 @@ def test_build_store_offline_signals_silent_when_online():
             status="open",
         )
     ]
-    signals = build_store_offline_signals(
-        requests, today=_TODAY, now=_NOW, store_offline=False
-    )
+    signals = build_store_offline_signals(requests, today=_TODAY, now=_NOW, store_offline=False)
     assert signals == ()
 
 
 def test_build_store_offline_signals_silent_when_no_open_requests():
     from xsource.signals.build import build_store_offline_signals
 
-    signals = build_store_offline_signals(
-        [], today=_TODAY, now=_NOW, store_offline=True
-    )
+    signals = build_store_offline_signals([], today=_TODAY, now=_NOW, store_offline=True)
     assert signals == ()

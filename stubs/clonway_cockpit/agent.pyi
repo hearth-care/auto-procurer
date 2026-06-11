@@ -1,3 +1,5 @@
 from typing import Any
 
-def serve_agent_stdio(host: Any, *, stdin: Any = None, stdout: Any = None, allow_apply: bool = False) -> None: ...
+def serve_agent_stdio(
+    host: Any, *, stdin: Any = None, stdout: Any = None, allow_apply: bool = False
+) -> None: ...

@@ -91,7 +91,11 @@ def _make_fixtures():
             ShortlistEntry(
                 supplier_id="s-roof",
                 rank=1,
-                outreach={"thread_id": "thr-live", "status": "asked", "asked_at": "2026-06-10T09:00:00+00:00"},
+                outreach={
+                    "thread_id": "thr-live",
+                    "status": "asked",
+                    "asked_at": "2026-06-10T09:00:00+00:00",
+                },
             )
         ],
     )
