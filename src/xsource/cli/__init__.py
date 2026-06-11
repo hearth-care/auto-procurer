@@ -14,6 +14,7 @@ import sys
 import typer
 
 from xsource.cli.cockpit import run_cockpit, serve_agent
+from xsource.cli.invoice import invoice_app
 from xsource.cli.request import request_app
 from xsource.cli.signals import signals_app
 from xsource.cli.watcher import watcher_app
@@ -26,6 +27,7 @@ app = typer.Typer(
 app.add_typer(signals_app, name="signals")
 app.add_typer(watcher_app, name="watcher")
 app.add_typer(request_app, name="request")
+app.add_typer(invoice_app, name="invoice")
 
 
 @app.callback(invoke_without_command=True)

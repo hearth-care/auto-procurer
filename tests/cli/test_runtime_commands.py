@@ -58,12 +58,23 @@ def test_reorder_rejects_unknown_supplier(monkeypatch, tmp_path):
     assert result.exit_code != 0
 
 
+def test_invoice_commands_are_registered():
+    result = runner.invoke(app, ["invoice", "--help"])
+
+    assert result.exit_code == 0
+    assert "add" in result.stdout
+    assert "import" in result.stdout
+    assert "list" in result.stdout
+
+
 def test_watcher_run_once_can_idle_without_anthropic_key(monkeypatch, tmp_path):
     from xsource.cli import watcher
 
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
-    monkeypatch.setattr(watcher, "build_stores", lambda cfg: (_EmptyStore(), _EmptyStore()))
+    monkeypatch.setattr(
+        watcher, "build_stores", lambda cfg: (_EmptyStore(), _EmptyStore(), _EmptyStore())
+    )
     monkeypatch.setattr(watcher, "_gmail_service", lambda: object())
     monkeypatch.setattr(watcher, "_sheet_client", lambda: object())
     monkeypatch.setattr(watcher, "GmailWatcherClient", lambda service, own_addresses: _NoopGmail())

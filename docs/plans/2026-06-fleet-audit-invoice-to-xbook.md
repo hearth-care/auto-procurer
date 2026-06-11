@@ -184,13 +184,13 @@ can't drift silently.
 
 ### Phase 2 — capture + linkage (Wave 2, M)
 
-- [ ] `src/xsource/invoices/capture.py`: capture/import logic, price-history
+- [x] `src/xsource/invoices/capture.py`: capture/import logic, price-history
       append, variance check.
-- [ ] `src/xsource/cli/invoice.py`: `invoice add`, `invoice import`,
+- [x] `src/xsource/cli/invoice.py`: `invoice add`, `invoice import`,
       `invoice list`.
-- [ ] Cockpit: `invoice.capture` capability + invoices pill in
+- [x] Cockpit: `invoice.capture` capability + invoices pill in
       `capture_state` (render/model parity suite must stay green).
-- [ ] Tests: importer idempotency, chosen-supplier mismatch warning, variance
+- [x] Tests: importer idempotency, chosen-supplier mismatch warning, variance
       flag at the tolerance boundary, pill counts.
 
 ### Phase 3 — signal emission + ack ingestion (Wave 3, M)
@@ -261,13 +261,20 @@ can't drift silently.
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 2 — capture + linkage.
+- Current phase: Phase 3 — signal emission + ack ingestion.
 - Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
   `invoices.jsonl` `SyncedStore`, and focused tests.
+- Completed: Phase 2 capture/import/CLI/cockpit slice with price-history linkage,
+  supplier mismatch warnings, variance detection, idempotent CSV import, root
+  `xsource invoice` commands, `invoice.capture`, and the invoices attention pill.
 - Verification: `uv run pytest tests/store/test_models.py tests/store/test_remote.py -q`
   returned `19 passed in 0.03s`.
+- Verification: `uv run pytest tests/invoices/test_capture.py tests/cli/test_runtime_commands.py tests/test_cockpit_render.py -q`
+  returned `11 passed in 4.88s`.
 - Decisions: `build_stores` now returns `(suppliers, requests, invoices)`; existing callers
   ignore the invoice store until their phase uses it.
+- Decisions: invoice capture stores money as `amount_minor`; variance checks normalise older
+  supplier quote rows with `amount` by treating them as pounds.
 - Known-failing tests: none at this handoff point.
-- Next concrete step: write failing Phase 2 capture/import tests for price-history linkage,
-  idempotent CSV import, chosen-supplier mismatch warning, and variance threshold behavior.
+- Next concrete step: write failing Phase 3 tests for `payment.required` emission,
+  ack ingestion, rejected-invoice operator signals, and horizon composition.

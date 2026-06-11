@@ -46,9 +46,12 @@ def test_build_stores_includes_invoice_store(tmp_path, monkeypatch):
         monthly_budget_gbp=10.0,
         chase_after_days=3,
         poll_seconds=60,
+        max_backoff_seconds=300,
+        breaker_threshold=10,
         drive_folder_id=None,
         staff_share_group=None,
         state_dir=str(tmp_path),
+        model_chain=["claude-sonnet-4-6"],
     )
     suppliers, requests, invoices = build_stores(cfg)
 
