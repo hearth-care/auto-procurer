@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from xsource.config import Config
+from xsource.invoices.acks import ingest_ack_records, read_ack_jsonl
 from xsource.invoices.capture import capture_invoice, import_csv
 from xsource.wiring import build_stores
 
@@ -67,3 +68,16 @@ def list_() -> None:
             f"{invoice.id}\t{invoice.status}\t{invoice.supplier_id}\t"
             f"{invoice.amount_minor} {invoice.currency}\t{invoice.invoice_number or ''}"
         )
+
+
+@invoice_app.command("sync-acks")
+def sync_acks(
+    ack_path: Path | None = typer.Argument(
+        None,
+        help="JSONL ack file; defaults to XSOURCE_STATE_DIR/payment-required-acks.jsonl.",
+    ),
+) -> None:
+    cfg = Config.from_env()
+    _suppliers, _requests, invoices = build_stores(cfg)
+    path = ack_path or Path(cfg.state_dir) / "payment-required-acks.jsonl"
+    typer.echo(ingest_ack_records(invoices, read_ack_jsonl(path)))

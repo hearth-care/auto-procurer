@@ -195,11 +195,11 @@ can't drift silently.
 
 ### Phase 3 — signal emission + ack ingestion (Wave 3, M)
 
-- [ ] `src/xsource/signals/build.py`: `build_payment_required_signals` composed
+- [x] `src/xsource/signals/build.py`: `build_payment_required_signals` composed
       into the horizon scan; overdue escalation.
-- [ ] Handshake ack reader wired into the nightly sync path
+- [x] Handshake ack reader wired into the nightly sync path
       (`src/xsource/cli/request.py` sync-all or a sibling `invoice sync`).
-- [ ] Tests: emission only in emittable states; stable dedup keys; ack
+- [x] Tests: emission only in emittable states; stable dedup keys; ack
       transitions; rejected-invoice operator signal.
 
 ### Phase 4 — contract artifact (Wave 3, S)
@@ -261,20 +261,30 @@ can't drift silently.
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 3 — signal emission + ack ingestion.
+- Current phase: Phase 4 — contract artifact.
 - Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
   `invoices.jsonl` `SyncedStore`, and focused tests.
 - Completed: Phase 2 capture/import/CLI/cockpit slice with price-history linkage,
   supplier mismatch warnings, variance detection, idempotent CSV import, root
   `xsource invoice` commands, `invoice.capture`, and the invoices attention pill.
+- Completed: Phase 3 signal/ack slice with `payment.required`, overdue escalation,
+  rejected-invoice `action.required`, `xsource invoice sync-acks`, and ack transitions.
 - Verification: `uv run pytest tests/store/test_models.py tests/store/test_remote.py -q`
   returned `19 passed in 0.03s`.
 - Verification: `uv run pytest tests/invoices/test_capture.py tests/cli/test_runtime_commands.py tests/test_cockpit_render.py -q`
   returned `11 passed in 4.88s`.
+- Verification: `uv run pytest tests/test_signals_build.py tests/invoices/test_acks.py tests/cli/test_runtime_commands.py -q`
+  returned `16 passed in 6.40s`.
 - Decisions: `build_stores` now returns `(suppliers, requests, invoices)`; existing callers
   ignore the invoice store until their phase uses it.
 - Decisions: invoice capture stores money as `amount_minor`; variance checks normalise older
   supplier quote rows with `amount` by treating them as pounds.
+- Decisions: ack ingestion is a sibling nightly command, `xsource invoice sync-acks`,
+  defaulting to `XSOURCE_STATE_DIR/payment-required-acks.jsonl`; this satisfies the
+  plan's "request sync-all or sibling invoice sync" option without mixing invoice handoff into
+  Sheet request sync.
+- Deviation: signal builders stay pure like existing horizon builders; they do not mutate
+  invoice status to `emitted`. Ack ingestion owns lifecycle transitions.
 - Known-failing tests: none at this handoff point.
-- Next concrete step: write failing Phase 3 tests for `payment.required` emission,
-  ack ingestion, rejected-invoice operator signals, and horizon composition.
+- Next concrete step: write the payment-required v1 contract doc, golden signal/ack fixtures,
+  and a fixture-backed contract test.

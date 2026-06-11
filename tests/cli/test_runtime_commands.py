@@ -65,6 +65,7 @@ def test_invoice_commands_are_registered():
     assert "add" in result.stdout
     assert "import" in result.stdout
     assert "list" in result.stdout
+    assert "sync-acks" in result.stdout
 
 
 def test_watcher_run_once_can_idle_without_anthropic_key(monkeypatch, tmp_path):
