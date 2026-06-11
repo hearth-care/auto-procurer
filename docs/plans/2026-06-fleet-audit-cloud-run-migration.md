@@ -1,6 +1,6 @@
 # [Plan] Migrate xsource off Mac-local launchd
 
-**Status:** draft plan — not implemented
+**Status:** implementation in progress on PR #15
 **Source:** fleet audit 2026-06-11, item O9 (context: audit §3 Mac-local
 estate findings, dragon D3)
 **Wave:** 2
@@ -177,10 +177,10 @@ plists — the GCS-synced stores mean state follows whichever runner is active.
 
 ### Phase 1 — containerise + deploy skeleton (M)
 
-- [ ] `Dockerfile` + `.dockerignore`; image runs `xsource --help` healthily.
-- [ ] Deploy workflow (build/push/deploy) mirroring sibling workers; jobs
+- [x] `Dockerfile` + `.dockerignore`; image runs `xsource --help` healthily.
+- [x] Deploy workflow (build/push/deploy) mirroring sibling workers; jobs
       created with schedulers **paused**; per-worker runtime SA.
-- [ ] Fleet config file gains this worker's entries (service/job names,
+- [x] Fleet config file gains this worker's entries (service/job names,
       bucket prefixes, SA) — referenced by key, values stay out of this repo.
 - Tests: CI builds the image; a smoke job execution exits 0 with no-op env.
 
@@ -263,3 +263,11 @@ plists — the GCS-synced stores mean state follows whichever runner is active.
 5. Public repo: keep project ids, bucket names, SA emails, and scheduler URIs
    out of code and docs — read them from the fleet config file (reference its
    keys) or from deployment-time env.
+
+## HANDOFF NOTES
+
+- Agent: builder-codex-20260611T200954Z-94309.
+- Current phase: Phase 2 next. Phase 1 repo artefacts are implemented in this PR branch.
+- Decisions taken: watcher uses scheduled Cloud Run job with `xsource watcher run --cycles 4 --interval 60`; deploy workflow creates schedulers paused and reads concrete fleet values from repo environment variables/secrets, not checked-in docs.
+- Verification so far: `uv run pytest tests/deploy/test_cloud_run_phase1.py -q` -> 3 passed.
+- Known failing tests: none from the current targeted slice.
