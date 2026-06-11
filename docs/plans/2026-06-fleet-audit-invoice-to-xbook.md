@@ -262,7 +262,7 @@ can't drift silently.
 
 ## HANDOFF NOTES
 
-- Current phase: QA fix for variance signal path committed next; full gates still pending.
+- Current phase: QA fix for variance signal path complete; rebasing onto latest `origin/main`.
 - Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
   `invoices.jsonl` `SyncedStore`, and focused tests.
 - Completed: Phase 2 capture/import/CLI/cockpit slice with price-history linkage,
@@ -292,6 +292,11 @@ can't drift silently.
 - Verification: nearby regression suite
   `uv run pytest tests/test_signals_build.py tests/invoices/test_capture.py -q`
   returned `18 passed in 6.15s`.
+- Verification: full suite `uv run pytest -q` returned `179 passed in 16.06s`.
+- Verification: `uv run ruff check .` returned `All checks passed!`.
+- Verification: `uv run mypy` returned `Success: no issues found in 57 source files`.
+- Verification: `pre-commit run --all-files` returned `InvalidConfigError:
+  .pre-commit-config.yaml is not a file`.
 - Verification: post-QA-fix `uv run pytest -q` returned `178 passed in 21.98s`.
 - Verification: `uv run ruff check .` returned `All checks passed!`.
 - Verification: `uv run mypy` returned `Success: no issues found in 57 source files`.
@@ -311,5 +316,4 @@ can't drift silently.
 - Known-failing tests: none. Focused RED was
   `uv run pytest tests/test_signals_build.py::test_invoice_variance_signal_uses_captured_invoice_state -q`,
   which failed because `build_invoice_variance_signals` did not exist.
-- Next concrete step: run full gates, rebase on latest `origin/main`, push with lease,
-  then finish protocol.
+- Next concrete step: rebase on latest `origin/main`, push with lease, then finish protocol.
