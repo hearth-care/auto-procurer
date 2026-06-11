@@ -289,6 +289,48 @@ def build_payment_required_signals(
     return tuple(out)
 
 
+def build_invoice_variance_signals(
+    invoices: Sequence[InvoiceRecord],
+    suppliers: Sequence[Supplier],
+    *,
+    today: Date,
+    now: datetime,
+) -> tuple[Signal, ...]:
+    out = []
+    for invoice in invoices:
+        variance = invoice.handoff.get("variance")
+        if (
+            not isinstance(variance, dict)
+            or invoice.handoff.get("variance_resolved_at")
+            or invoice.status in {"settled", "written_off"}
+        ):
+            continue
+        quoted_minor = variance.get("quoted_minor")
+        invoiced_minor = variance.get("invoiced_minor")
+        if not isinstance(quoted_minor, int) or not isinstance(invoiced_minor, int):
+            continue
+        supplier_name = _supplier_name(suppliers, invoice.supplier_id)
+        out.append(
+            _signal(
+                kind="action.required",
+                title=f"Review invoice variance {invoice.invoice_number or invoice.id}",
+                detail=(
+                    f"{supplier_name}: quoted {_money(quoted_minor, invoice.currency)}, "
+                    f"invoiced {_money(invoiced_minor, invoice.currency)} for {invoice.description}"
+                ),
+                level="warn",
+                urgency="high",
+                dedup_key=f"xsource|invoice-variance|{invoice.id}",
+                emitted_at=now,
+                due_at=today,
+                capability_key="invoice.capture",
+                focus=invoice.id,
+                source_id=invoice.id,
+            )
+        )
+    return tuple(out)
+
+
 def build_rejected_invoice_signals(
     invoices: Sequence[InvoiceRecord],
     suppliers: Sequence[Supplier],
@@ -347,6 +389,12 @@ def scan_xsource_horizon(*, today: Date, now: datetime) -> Sequence[Signal]:
                 store_offline=store_offline,
             ),
             *build_payment_required_signals(
+                invoice_records,
+                supplier_records,
+                today=today,
+                now=now,
+            ),
+            *build_invoice_variance_signals(
                 invoice_records,
                 supplier_records,
                 today=today,

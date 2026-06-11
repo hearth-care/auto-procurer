@@ -262,7 +262,7 @@ can't drift silently.
 
 ## HANDOFF NOTES
 
-- Current phase: QA fix complete; finish protocol.
+- Current phase: QA fix for variance signal path committed next; full gates still pending.
 - Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
   `invoices.jsonl` `SyncedStore`, and focused tests.
 - Completed: Phase 2 capture/import/CLI/cockpit slice with price-history linkage,
@@ -280,6 +280,18 @@ can't drift silently.
   reached the consumer, so advancing through `emitted` is correct. Also updated
   `test_acks.py` to exercise the real `capture_invoice() → ingest_ack_records` path
   instead of constructing invoices in `emitted` state directly, which was masking the bug.
+- QA fix (fixer-codex-20260611T214518Z-55255): Added the missing real horizon path for
+  invoice variance `action.required` signals. Variance metadata already persists on
+  `InvoiceRecord.handoff["variance"]`; `build_invoice_variance_signals` now derives a stable
+  `xsource|invoice-variance|<invoice id>` signal from captured invoice state and the composed
+  horizon scan includes it. The signal is suppressed when `handoff["variance_resolved_at"]`
+  exists or the invoice is terminal (`settled` / `written_off`).
+- Verification: focused GREEN
+  `uv run pytest tests/test_signals_build.py::test_invoice_variance_signal_uses_captured_invoice_state -q`
+  returned `1 passed in 0.01s`.
+- Verification: nearby regression suite
+  `uv run pytest tests/test_signals_build.py tests/invoices/test_capture.py -q`
+  returned `18 passed in 6.15s`.
 - Verification: post-QA-fix `uv run pytest -q` returned `178 passed in 21.98s`.
 - Verification: `uv run ruff check .` returned `All checks passed!`.
 - Verification: `uv run mypy` returned `Success: no issues found in 57 source files`.
@@ -296,5 +308,8 @@ can't drift silently.
   advance on first ack receipt.
 - Deferred: cross-repo fixture handoff to the books-worker repo, because this dispatch
   explicitly forbids opening another PR. The fixture set exists in this PR.
-- Known-failing tests: none.
-- Next concrete step: finish protocol.
+- Known-failing tests: none. Focused RED was
+  `uv run pytest tests/test_signals_build.py::test_invoice_variance_signal_uses_captured_invoice_state -q`,
+  which failed because `build_invoice_variance_signals` did not exist.
+- Next concrete step: run full gates, rebase on latest `origin/main`, push with lease,
+  then finish protocol.

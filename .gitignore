@@ -19,6 +19,7 @@ coverage.xml
 # AI-tool scratch dirs / worktrees
 .Codex/
 .claude/
+.claude/worktrees/
 .superpowers/
 .claude/
 .cockpit/
