@@ -12,6 +12,10 @@ from xsource.invoices.capture import capture_invoice, import_csv
 from xsource.wiring import build_stores
 
 invoice_app = typer.Typer(help="Capture and hand off supplier invoices.")
+_ACK_PATH_ARG = typer.Argument(
+    None,
+    help="JSONL ack file; defaults to XSOURCE_STATE_DIR/payment-required-acks.jsonl.",
+)
 
 
 @invoice_app.command("add")
@@ -71,12 +75,7 @@ def list_() -> None:
 
 
 @invoice_app.command("sync-acks")
-def sync_acks(
-    ack_path: Path | None = typer.Argument(
-        None,
-        help="JSONL ack file; defaults to XSOURCE_STATE_DIR/payment-required-acks.jsonl.",
-    ),
-) -> None:
+def sync_acks(ack_path: Path | None = _ACK_PATH_ARG) -> None:
     cfg = Config.from_env()
     _suppliers, _requests, invoices = build_stores(cfg)
     path = ack_path or Path(cfg.state_dir) / "payment-required-acks.jsonl"

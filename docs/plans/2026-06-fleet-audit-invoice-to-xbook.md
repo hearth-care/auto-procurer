@@ -1,6 +1,6 @@
 # [Plan] Invoice capture → xbook AP handoff
 
-**Status:** implementation in progress on PR #13
+**Status:** implemented on PR #13; awaiting operator QA
 **Source:** fleet audit 2026-06-11, items S5, S6
 **Wave:** 2 (S5), 3 (S6)
 
@@ -213,18 +213,18 @@ can't drift silently.
 
 ## Acceptance criteria
 
-- [ ] An invoice can be captured (CLI and walk), linked to its request and
+- [x] An invoice can be captured (CLI and walk), linked to its request and
       supplier, and survives a store round-trip.
-- [ ] Capturing an invoice against a chosen supplier appends an `"invoiced"`
+- [x] Capturing an invoice against a chosen supplier appends an `"invoiced"`
       price-history row; a >tolerance quote-vs-invoice gap raises a variance
       flag and a signal.
-- [ ] Every unsettled, emittable invoice produces exactly one
+- [x] Every unsettled, emittable invoice produces exactly one
       `payment.required` signal per scan with a stable `dedup_key`; settled and
       acknowledged invoices produce none.
-- [ ] A consumer ack flips the invoice state; a rejection becomes an
+- [x] A consumer ack flips the invoice state; a rejection becomes an
       operator-visible `action.required` item.
-- [ ] The contract doc + fixtures exist and the emitter is tested against them.
-- [ ] No new write path bypasses the cockpit gate; the worker still never sends
+- [x] The contract doc + fixtures exist and the emitter is tested against them.
+- [x] No new write path bypasses the cockpit gate; the worker still never sends
       email or moves money (`tests/test_no_send_endpoints.py`,
       `tests/test_safety.py` untouched and green).
 
@@ -262,7 +262,7 @@ can't drift silently.
 
 ## HANDOFF NOTES
 
-- Current phase: final gates and PR finish protocol.
+- Current phase: finish protocol.
 - Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
   `invoices.jsonl` `SyncedStore`, and focused tests.
 - Completed: Phase 2 capture/import/CLI/cockpit slice with price-history linkage,
@@ -281,6 +281,11 @@ can't drift silently.
   returned `16 passed in 6.40s`.
 - Verification: `uv run pytest tests/contracts/test_payment_required_contract.py -q`
   returned `3 passed in 0.01s`.
+- Verification: post-rebase `uv run pytest -q` returned `177 passed in 16.35s`.
+- Verification: `uv run ruff check .` returned `All checks passed!`.
+- Verification: `uv run mypy` returned `Success: no issues found in 57 source files`.
+- Verification: post-rebase `pre-commit run --all-files` returned
+  `.pre-commit-config.yaml is not a file`; this repo has no pre-commit config.
 - Decisions: `build_stores` now returns `(suppliers, requests, invoices)`; existing callers
   ignore the invoice store until their phase uses it.
 - Decisions: invoice capture stores money as `amount_minor`; variance checks normalise older
@@ -293,6 +298,5 @@ can't drift silently.
   invoice status to `emitted`. Ack ingestion owns lifecycle transitions.
 - Deferred: cross-repo fixture handoff to the books-worker repo, because this dispatch
   explicitly forbids opening another PR. The fixture set exists in this PR.
-- Known-failing tests: none at this handoff point.
-- Next concrete step: run full local gates, rebase onto latest `origin/main`, push, and finish
-  the PR protocol.
+- Known-failing tests: none.
+- Next concrete step: push the rebased branch and finish the PR protocol.
