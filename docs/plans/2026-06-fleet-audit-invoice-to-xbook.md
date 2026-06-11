@@ -1,6 +1,6 @@
 # [Plan] Invoice capture → xbook AP handoff
 
-**Status:** draft plan — not implemented
+**Status:** implementation in progress on PR #13
 **Source:** fleet audit 2026-06-11, items S5, S6
 **Wave:** 2 (S5), 3 (S6)
 
@@ -176,10 +176,10 @@ can't drift silently.
 
 ### Phase 1 — schema + store (Wave 2, S)
 
-- [ ] `src/xsource/store/models.py`: `InvoiceRecord` dataclass + lifecycle
+- [x] `src/xsource/store/models.py`: `InvoiceRecord` dataclass + lifecycle
       transition validator.
-- [ ] `src/xsource/wiring.py`: third `SyncedStore` for `invoices.jsonl`.
-- [ ] `tests/store/test_models.py` additions: round-trip, transition table
+- [x] `src/xsource/wiring.py`: third `SyncedStore` for `invoices.jsonl`.
+- [x] `tests/store/test_models.py` additions: round-trip, transition table
       (legal/illegal moves), money-as-minor-units.
 
 ### Phase 2 — capture + linkage (Wave 2, M)
@@ -258,3 +258,16 @@ can't drift silently.
 5. Public repo: keep bucket names, project ids, and real supplier details out
    of docs, fixtures, and tests — use the constants in `wiring.py`/`emit.py`
    and invented fixture data.
+
+## HANDOFF NOTES
+
+- Current phase: Phase 2 — capture + linkage.
+- Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
+  `invoices.jsonl` `SyncedStore`, and focused tests.
+- Verification: `uv run pytest tests/store/test_models.py tests/store/test_remote.py -q`
+  returned `19 passed in 0.03s`.
+- Decisions: `build_stores` now returns `(suppliers, requests, invoices)`; existing callers
+  ignore the invoice store until their phase uses it.
+- Known-failing tests: none at this handoff point.
+- Next concrete step: write failing Phase 2 capture/import tests for price-history linkage,
+  idempotent CSV import, chosen-supplier mismatch warning, and variance threshold behavior.

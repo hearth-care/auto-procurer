@@ -56,7 +56,7 @@ def sync_all_requests(*, suppliers, requests, sheets, synced_at: dt.datetime) ->
 @request_app.command("sync")
 def sync(request_id: str) -> None:
     cfg = Config.from_env()
-    suppliers, requests = build_stores(cfg)
+    suppliers, requests, _invoices = build_stores(cfg)
     with run_session(trigger="request.sync", args={"request_id": request_id}):
         request = requests.get(request_id)
         if request is None:
@@ -77,7 +77,7 @@ def sync(request_id: str) -> None:
 @request_app.command("sync-all")
 def sync_all() -> None:
     cfg = Config.from_env()
-    suppliers, requests = build_stores(cfg)
+    suppliers, requests, _invoices = build_stores(cfg)
     with run_session(trigger="request.sync-all", args={}):
         report = sync_all_requests(
             suppliers=suppliers,

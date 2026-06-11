@@ -250,7 +250,7 @@ def build_store_offline_signals(
 def scan_xsource_horizon(*, today: Date, now: datetime) -> Sequence[Signal]:
     cfg = Config.from_env()
     with contextlib.suppress(Exception):
-        suppliers, requests = build_stores(cfg)
+        suppliers, requests, _invoices = build_stores(cfg)
         request_records = requests.all()
         supplier_records = suppliers.all()
         store_offline = suppliers.offline or requests.offline

@@ -12,7 +12,7 @@ from xsource.config import Config
 from xsource.research import places, pricesweep, websearch
 from xsource.research.companies_house import company_check
 from xsource.secrets import secret_from_env
-from xsource.store.models import Request, Supplier
+from xsource.store.models import InvoiceRecord, Request, Supplier
 from xsource.store.remote import SyncedStore, make_blob
 
 
@@ -22,7 +22,7 @@ def state_blob(cfg: Config, filename: str):
     return make_blob(cfg.fleet_bucket, f"{cfg.state_prefix}/{filename}")
 
 
-def build_stores(cfg: Config) -> tuple[SyncedStore, SyncedStore]:
+def build_stores(cfg: Config) -> tuple[SyncedStore, SyncedStore, SyncedStore]:
     base = Path(cfg.state_dir)
     suppliers = SyncedStore(
         base,
@@ -36,7 +36,10 @@ def build_stores(cfg: Config) -> tuple[SyncedStore, SyncedStore]:
         Request,
         state_blob(cfg, "requests.jsonl"),
     )
-    return suppliers, requests_
+    invoices = SyncedStore(
+        base, "invoices.jsonl", InvoiceRecord, make_blob(_BUCKET, "state/xsource/invoices.jsonl")
+    )
+    return suppliers, requests_, invoices
 
 
 def build_budget(cfg: Config, today: dt.date) -> Budget:

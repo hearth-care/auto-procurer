@@ -61,7 +61,7 @@ def _status() -> dict:
     suppliers: SyncedStore | None = None
     requests_: SyncedStore | None = None
     with contextlib.suppress(Exception):
-        suppliers, requests_ = build_stores(cfg)
+        suppliers, requests_, _invoices = build_stores(cfg)
     budget = build_budget(cfg, dt.date.today())
     return {"cfg": cfg, "suppliers": suppliers, "requests": requests_, "budget": budget}
 
@@ -243,7 +243,7 @@ def _triage_step(ctx: WizardContext, bag: dict) -> StepResult:
 
 def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
     cfg = Config.from_env()
-    suppliers, _requests = build_stores(cfg)
+    suppliers, _requests, _invoices = build_stores(cfg)
     triage_dict = bag["triage"]
     triage = Triage(
         category=triage_dict["category"],
@@ -295,7 +295,7 @@ def _review_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     from xsource.walks.request_new import apply_request
 
     cfg = Config.from_env()
-    suppliers, requests_ = build_stores(cfg)
+    suppliers, requests_, _invoices = build_stores(cfg)
 
     def create_sheet(title: str, values: list[list[str]]) -> tuple[str, str]:
         creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_SHEETS_TOKEN_PATH"])
@@ -359,7 +359,7 @@ def _outreach_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     from xsource.outreach.drafts import create_request_drafts
 
     cfg = Config.from_env()
-    suppliers, requests_ = build_stores(cfg)
+    suppliers, requests_, _invoices = build_stores(cfg)
     creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_GMAIL_TOKEN_PATH"])
     service = build("gmail", "v1", credentials=creds, cache_discovery=False)
     report = create_request_drafts(
