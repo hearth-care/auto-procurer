@@ -30,6 +30,9 @@ def ingest_ack_records(invoices, records: list[dict[str, Any]]) -> dict[str, int
         disposition = str(record.get("disposition") or "")
         timestamp = str(record.get("timestamp") or "")
         try:
+            # A received ack proves the signal reached the consumer; advance captured→emitted.
+            if invoice.status == "captured":
+                invoice.transition_to("emitted", at=timestamp)
             if disposition == "accepted":
                 invoice.transition_to("acknowledged", at=timestamp)
                 report["acknowledged"] += 1

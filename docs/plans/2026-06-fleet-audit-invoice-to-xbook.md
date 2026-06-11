@@ -262,7 +262,7 @@ can't drift silently.
 
 ## HANDOFF NOTES
 
-- Current phase: finish protocol.
+- Current phase: QA fix complete; finish protocol.
 - Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
   `invoices.jsonl` `SyncedStore`, and focused tests.
 - Completed: Phase 2 capture/import/CLI/cockpit slice with price-history linkage,
@@ -273,19 +273,16 @@ can't drift silently.
 - Completed: Phase 4 in-repo contract artifact with
   `docs/contracts/payment-required-v1.md`, `tests/contracts/fixtures/latest.jsonl`,
   `tests/contracts/fixtures/acks.jsonl`, and a fixture-backed contract test.
-- Verification: `uv run pytest tests/store/test_models.py tests/store/test_remote.py -q`
-  returned `19 passed in 0.03s`.
-- Verification: `uv run pytest tests/invoices/test_capture.py tests/cli/test_runtime_commands.py tests/test_cockpit_render.py -q`
-  returned `11 passed in 4.88s`.
-- Verification: `uv run pytest tests/test_signals_build.py tests/invoices/test_acks.py tests/cli/test_runtime_commands.py -q`
-  returned `16 passed in 6.40s`.
-- Verification: `uv run pytest tests/contracts/test_payment_required_contract.py -q`
-  returned `3 passed in 0.01s`.
-- Verification: post-rebase `uv run pytest -q` returned `177 passed in 16.35s`.
+- QA fix (fixer-claude-20260611T213208Z-55255): Fixed critical lifecycle bug where
+  ack ingestion silently skipped all acks because invoices stay `captured` but
+  `transition_to("acknowledged")` requires `emitted`. Fix: `acks.py` now auto-advances
+  `captured → emitted` before processing the disposition — the ack proves the signal
+  reached the consumer, so advancing through `emitted` is correct. Also updated
+  `test_acks.py` to exercise the real `capture_invoice() → ingest_ack_records` path
+  instead of constructing invoices in `emitted` state directly, which was masking the bug.
+- Verification: post-QA-fix `uv run pytest -q` returned `178 passed in 21.98s`.
 - Verification: `uv run ruff check .` returned `All checks passed!`.
 - Verification: `uv run mypy` returned `Success: no issues found in 57 source files`.
-- Verification: post-rebase `pre-commit run --all-files` returned
-  `.pre-commit-config.yaml is not a file`; this repo has no pre-commit config.
 - Decisions: `build_stores` now returns `(suppliers, requests, invoices)`; existing callers
   ignore the invoice store until their phase uses it.
 - Decisions: invoice capture stores money as `amount_minor`; variance checks normalise older
@@ -294,9 +291,10 @@ can't drift silently.
   defaulting to `XSOURCE_STATE_DIR/payment-required-acks.jsonl`; this satisfies the
   plan's "request sync-all or sibling invoice sync" option without mixing invoice handoff into
   Sheet request sync.
-- Deviation: signal builders stay pure like existing horizon builders; they do not mutate
-  invoice status to `emitted`. Ack ingestion owns lifecycle transitions.
+- Deviation (original builder): signal builders stay pure; they do not mutate invoice
+  status. Ack ingestion owns lifecycle transitions including the implicit `captured→emitted`
+  advance on first ack receipt.
 - Deferred: cross-repo fixture handoff to the books-worker repo, because this dispatch
   explicitly forbids opening another PR. The fixture set exists in this PR.
 - Known-failing tests: none.
-- Next concrete step: push the rebased branch and finish the PR protocol.
+- Next concrete step: finish protocol.
