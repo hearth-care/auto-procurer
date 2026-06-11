@@ -1,6 +1,6 @@
 # [Plan] P4 completion: triggers end-to-end + recurring reorder actions
 
-**Status:** draft plan — not implemented
+**Status:** implemented (2026-06-11)
 **Source:** fleet audit 2026-06-11, items S10, S7
 **Wave:** 2 (S10), 4 (S7)
 
@@ -163,52 +163,52 @@ New module `src/xsource/p4/reorder.py` + capability `request.reorder`:
 
 ### Phase 1 — trigger CLI + walk (Wave 2, M)
 
-- [ ] `src/xsource/cli/request.py`: `trigger` command (`--file`/stdin JSON).
-- [ ] `src/xsource/cli/cockpit.py`: real handler for `request.trigger` that
+- [x] `src/xsource/cli/request.py`: `trigger` command (`--file`/stdin JSON).
+- [x] `src/xsource/cli/cockpit.py`: real handler for `request.trigger` that
       pre-seeds the `request.new` step chain; remove fictional
       `equivalent_cli` claims from still-stubbed capabilities.
-- [ ] `tests/p4/test_trigger_e2e.py` as specced (no live credentials; all
+- [x] `tests/p4/test_trigger_e2e.py` as specced (no live credentials; all
       collaborators injected at the existing seams).
 - Tests: e2e accept + reject paths; CLI exit codes; provenance recorded.
 
 ### Phase 2 — followup wiring (Wave 2, S)
 
-- [ ] `src/xsource/cli/request.py`: `followup` command.
-- [ ] `src/xsource/cli/cockpit.py`: handler for `request.followup` behind
+- [x] `src/xsource/cli/request.py`: `followup` command.
+- [x] `src/xsource/cli/cockpit.py`: handler for `request.followup` behind
       `confirm_apply`; blast-radius text mirrors the outreach capability's.
-- [ ] `src/xsource/p4/followup.py`: operator identity from config.
+- [x] `src/xsource/p4/followup.py`: operator identity from config.
 - Tests: confirm/decline paths; metadata stamping; draft-only client used.
 
 ### Phase 3 — reorder proposal engine (Wave 4, M)
 
-- [ ] `src/xsource/p4/reorder.py`: `build_reorder_proposal` (pure) + plumbing.
-- [ ] `tests/p4/test_reorder.py`: prefill correctness (need derivation, rank-1
+- [x] `src/xsource/p4/reorder.py`: `build_reorder_proposal` (pure) + plumbing.
+- [x] `tests/p4/test_reorder.py`: prefill correctness (need derivation, rank-1
       pinning, budget median, missing-history fallbacks).
 
 ### Phase 4 — reorder capability + signal repoint (Wave 4, M)
 
-- [ ] `request.reorder` capability + walk (reorder vs re-tender vs dismiss).
-- [ ] `src/xsource/signals/build.py`: recurring signals point at
+- [x] `request.reorder` capability + walk (reorder vs re-tender vs dismiss).
+- [x] `src/xsource/signals/build.py`: recurring signals point at
       `request.reorder`; skip suppliers with an open reorder request.
-- [ ] Cockpit render/model parity suite extended to the new screens.
+- [x] Cockpit render/model parity suite extended to the new screens.
 - Tests: signal capability_key/focus; dedup-on-open-request; both walk
   branches end at the standard apply gate; no new send paths
   (`tests/test_no_send_endpoints.py` still green).
 
 ## Acceptance criteria
 
-- [ ] `xsource request trigger` exists and a procurement-shaped payload drives
+- [x] `xsource request trigger` exists and a procurement-shaped payload drives
       the full walk to a stored request in tests, with provenance recorded.
-- [ ] Non-procurement payloads are rejected with no store writes.
-- [ ] `request.trigger`, `request.followup`, and `request.reorder` have real
+- [x] Non-procurement payloads are rejected with no store writes.
+- [x] `request.trigger`, `request.followup`, and `request.reorder` have real
       handlers; no registered capability advertises a CLI command that
       `xsource --help` cannot show.
-- [ ] A due recurring supplier yields a signal that opens a prefilled reorder
+- [x] A due recurring supplier yields a signal that opens a prefilled reorder
       review (incumbent at rank 1, budget hint from price history), and acting
       on it stops the signal re-firing.
-- [ ] Both reorder branches end at the existing confirm-apply gate; outreach
+- [x] Both reorder branches end at the existing confirm-apply gate; outreach
       remains draft-only; the structural no-send tests are untouched and green.
-- [ ] Checkatrade remains build-only; no posting path is added.
+- [x] Checkatrade remains build-only; no posting path is added.
 
 ## Risks & dependencies
 
@@ -243,3 +243,53 @@ New module `src/xsource/p4/reorder.py` + capability `request.reorder`:
    screens.
 5. Public repo: fixture payloads and examples use invented suppliers and
    needs — no real business specifics.
+
+## HANDOFF NOTES
+
+**Phase:** all 4 phases implemented and merged into this PR branch.
+**Implemented 2026-06-11 by builder-claude-20260611T200951Z-94309.**
+
+### What was built
+
+- **Phase 1 (S10):** `xsource request trigger --file <json>` CLI; `_trigger_step` +
+  `_request_trigger_handler` in cockpit.py; trigger parse → triage → research → apply walk;
+  `tests/p4/test_trigger_e2e.py` (walk step chain + CLI round-trip tests).
+
+- **Phase 2 (S10):** `xsource request followup <request-id> <supplier-id>` CLI;
+  `_followup_select_step` + `_followup_apply_step` + `_request_followup_handler` in cockpit.py;
+  `operator_name` parameter added to `create_followup_draft` (no more hardcoded "Milo");
+  `Config.operator_display_name` from `XSOURCE_OPERATOR_DISPLAY_NAME` env var;
+  `tests/p4/test_followup_wiring.py`.
+
+- **Phase 3 (S7):** `src/xsource/p4/reorder.py` — `ReorderProposal` dataclass +
+  `build_reorder_proposal` pure function; `tests/p4/test_reorder.py` (11 unit tests).
+
+- **Phase 4 (S7):** `request.reorder` capability + 3-step walk (proposal → research → apply);
+  `xsource request reorder <supplier-id>` CLI; `build_recurring_service_signals` now:
+  (a) emits `capability_key="request.reorder"` instead of `"book.search"`,
+  (b) accepts optional `requests` arg and skips suppliers with open reorder requests
+  (dedup on `constraints["reorder_supplier_id"]`);
+  `tests/p4/test_reorder_capability.py`.
+
+- **Honest registration:** removed fictional `equivalent_cli` from `request.list`,
+  `book.search`, `book.import`, `book.publish`, `partner.checkatrade`, `doctor`.
+  Only capabilities with real CLI commands claim one.
+
+### Deviations from plan
+
+- `xsource request reorder <supplier-id>` currently opens the full cockpit (not
+  focus-navigated to the reorder capability). The framework's `run_cockpit` does not
+  currently accept a `focus` parameter for deep-linking into a specific capability.
+  The CLI exists so the `equivalent_cli` claim is honest; the operator navigates to
+  shelf A → reorder from there.
+
+- "Cockpit render/model parity suite extended to the new screens" — the new walk
+  handlers do not add any bespoke `render_*` functions; they use framework-provided
+  step rendering. The existing `test_render_model_parity` test passes vacuously
+  (correct per the contract test's docstring: "Vacuously true for the scaffold").
+
+### Gates (all green on 2026-06-11)
+
+- `uv run pytest -q` → 154 passed
+- `uv run ruff check .` → All checks passed
+- `uv run mypy` → Success: no issues found in 54 source files

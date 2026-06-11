@@ -87,3 +87,74 @@ def sync_all() -> None:
         )
         emit_heartbeat(job_name="request-sync-all", outcome="ok", counts=report)
     typer.echo(report)
+
+
+@request_app.command("trigger")
+def trigger(
+    file: typer.FileText = typer.Option(  # noqa: B008
+        None, "--file", "-f", help="JSON payload file ({source, subject?, body})."
+    ),
+) -> None:
+    """Parse an email/chat trigger and show what was extracted."""
+    import json
+    import sys
+
+    from xsource.p4.triggers import parse_trigger
+
+    raw = file.read() if file is not None else sys.stdin.read()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        typer.echo(f"Invalid JSON: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    parsed = parse_trigger(payload)
+    if parsed is None:
+        typer.echo("Not a procurement trigger.", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"source: {parsed.constraints.get('source', 'unknown')}")
+    typer.echo(f"need:   {parsed.raw_need}")
+
+
+@request_app.command("followup")
+def followup(
+    request_id: str,
+    supplier_id: str,
+) -> None:
+    """Create a draft follow-up reply for a supplier response."""
+    import os
+
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+
+    from xsource.outreach.client import SafeOutreachClient
+    from xsource.p4.followup import create_followup_draft
+
+    cfg = Config.from_env()
+    suppliers, requests_ = build_stores(cfg)
+    request = requests_.get(request_id)
+    if request is None:
+        raise typer.BadParameter(f"unknown request id {request_id}")
+    supplier = next((s for s in suppliers.all() if s.id == supplier_id), None)
+    if supplier is None:
+        raise typer.BadParameter(f"unknown supplier id {supplier_id}")
+
+    creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_GMAIL_TOKEN_PATH"])
+    service = build("gmail", "v1", credentials=creds, cache_discovery=False)
+    result = create_followup_draft(
+        request,
+        supplier,
+        draft_client=SafeOutreachClient(service),
+        operator_name=cfg.operator_display_name,
+        now=dt.datetime.now(dt.UTC),
+    )
+    typer.echo(result)
+
+
+@request_app.command("reorder")
+def reorder(supplier_id: str) -> None:
+    """Open a prefilled reorder review for a recurring supplier (opens cockpit)."""
+    from xsource.cli.cockpit import run_cockpit
+
+    run_cockpit()

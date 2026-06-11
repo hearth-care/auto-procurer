@@ -14,6 +14,7 @@ def create_followup_draft(
     *,
     draft_client,
     now: dt.datetime,
+    operator_name: str = "Milo",
 ) -> dict[str, str]:
     if not supplier.email:
         raise ValueError(f"supplier {supplier.id} has no email")
@@ -26,7 +27,7 @@ def create_followup_draft(
             f"Hello {supplier.name},",
             f"Thanks for getting back to us about {request.raw_need}. I saw: {summary}",
             "Could you let me know the next useful detail so we can decide how to proceed?",
-            "Kind regards,\nMilo",
+            f"Kind regards,\n{operator_name}",
             f"ref {request.id}",
         ]
     )
