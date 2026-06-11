@@ -47,3 +47,13 @@ def test_model_chain_from_research_model_fallback(monkeypatch):
     monkeypatch.setenv("XSOURCE_RESEARCH_MODEL", "claude-haiku-4-5-20251001")
     cfg = Config.from_env()
     assert cfg.model_chain == ["claude-haiku-4-5-20251001"]
+
+
+def test_fleet_state_config_comes_from_env(monkeypatch):
+    monkeypatch.setenv("XSOURCE_FLEET_BUCKET", "bucket-name")
+    monkeypatch.setenv("XSOURCE_STATE_PREFIX", "state/example")
+
+    cfg = Config.from_env()
+
+    assert cfg.fleet_bucket == "bucket-name"
+    assert cfg.state_prefix == "state/example"

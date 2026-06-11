@@ -27,6 +27,27 @@ XSOURCE_EMIT_SIGNALS=1 uv run xsource signals scan  # -> emitted 0 (no horizon y
 uv run pytest -q && uv run ruff check .              # green out of the box
 ```
 
+## Runtime
+
+Production runtime is Cloud Run jobs plus Cloud Scheduler:
+
+- `xsource watcher run --cycles 4 --interval 60` every five minutes;
+- `xsource request sync-all` nightly;
+- `xsource signals scan` daily.
+
+Deployment uses `.github/workflows/deploy-cloud-run.yml` and config keys from
+`deploy/xsource-cloud-run.env.example`. Secret values are mounted as files so
+the existing `XSOURCE_GMAIL_TOKEN_PATH`, `XSOURCE_SHEETS_TOKEN_PATH`, and
+`*_FILE` API-key conventions keep working. State that used to live in the Mac
+state directory is hydrated from `XSOURCE_FLEET_BUCKET` / `XSOURCE_STATE_PREFIX`
+at job start and uploaded after mutation.
+
+Cutover, soak, decommission, and rollback steps live in
+`docs/runbooks/cloud-run-cutover.md`. `scripts/install_launchd.py` is retained
+for rollback only; do not use it for steady-state production scheduling.
+Use `scripts/cutover_launchd.py` to archive, unload, or restore legacy launchd
+jobs.
+
 ## Make it real
 
 1. **`src/xsource/signals/build.py`** — replace the empty

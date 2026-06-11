@@ -15,22 +15,38 @@ from xsource.secrets import secret_from_env
 from xsource.store.models import Request, Supplier
 from xsource.store.remote import SyncedStore, make_blob
 
-_BUCKET = "clonway-orchestrator-eu-west2"
+
+def state_blob(cfg: Config, filename: str):
+    if not cfg.fleet_bucket:
+        return None
+    return make_blob(cfg.fleet_bucket, f"{cfg.state_prefix}/{filename}")
 
 
 def build_stores(cfg: Config) -> tuple[SyncedStore, SyncedStore]:
     base = Path(cfg.state_dir)
     suppliers = SyncedStore(
-        base, "suppliers.jsonl", Supplier, make_blob(_BUCKET, "state/xsource/suppliers.jsonl")
+        base,
+        "suppliers.jsonl",
+        Supplier,
+        state_blob(cfg, "suppliers.jsonl"),
     )
     requests_ = SyncedStore(
-        base, "requests.jsonl", Request, make_blob(_BUCKET, "state/xsource/requests.jsonl")
+        base,
+        "requests.jsonl",
+        Request,
+        state_blob(cfg, "requests.jsonl"),
     )
     return suppliers, requests_
 
 
 def build_budget(cfg: Config, today: dt.date) -> Budget:
-    return Budget(Path(cfg.state_dir), cfg.monthly_budget_gbp, today.strftime("%Y-%m"))
+    month = today.strftime("%Y-%m")
+    return Budget(
+        Path(cfg.state_dir),
+        cfg.monthly_budget_gbp,
+        month,
+        blob=state_blob(cfg, f"budget-{month}.json"),
+    )
 
 
 def build_research_fns(cfg: Config):

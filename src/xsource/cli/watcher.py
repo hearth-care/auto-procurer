@@ -12,13 +12,16 @@ import typer
 from xsource.cli.cockpit import _AnthropicStructuredGateway
 from xsource.config import Config
 from xsource.obs import event as obs_event
+from xsource.obs import run_session
+from xsource.runtime import emit_heartbeat
 from xsource.sheet.client import SheetClient
+from xsource.store.files import SyncedFile
 from xsource.store.remote import StoreOffline
 from xsource.watcher.daemon import process_once
 from xsource.watcher.gmail import GmailWatcherClient
 from xsource.watcher.loop import run_loop
 from xsource.watcher.state import ProcessedMessageStore
-from xsource.wiring import build_stores
+from xsource.wiring import build_stores, state_blob
 
 watcher_app = typer.Typer(help="Run or inspect the xsource reply watcher.")
 
@@ -52,10 +55,15 @@ def _process_factory(cfg: Config):
     suppliers, requests = build_stores(cfg)
     own_addresses = {
         item.strip().lower()
-        for item in os.environ.get("XSOURCE_OWN_EMAILS", "milo.garth@clonwaycare.co.uk").split(",")
+        for item in os.environ.get("XSOURCE_OWN_EMAILS", "").split(",")
         if item.strip()
     }
-    state = ProcessedMessageStore(Path(cfg.state_dir) / "watcher.sqlite3")
+    state_sync = SyncedFile(
+        Path(cfg.state_dir) / "watcher.sqlite3",
+        blob=state_blob(cfg, "watcher.sqlite3"),
+    )
+    state_sync.hydrate()
+    state = ProcessedMessageStore(state_sync.path)
     gmail = GmailWatcherClient(_gmail_service(), own_addresses=own_addresses)
     sheets = _sheet_client()
     gateway = _LazyStructuredGateway()
@@ -70,7 +78,7 @@ def _process_factory(cfg: Config):
                 detail="store offline at cycle start; skipping message processing",
             )
             raise StoreOffline("store is offline — skipping watcher cycle")
-        return process_once(
+        report = process_once(
             requests=requests,
             suppliers=suppliers,
             gmail=gmail,
@@ -79,6 +87,8 @@ def _process_factory(cfg: Config):
             state=state,
             now=dt.datetime.now(dt.UTC),
         )
+        state_sync.upload()
+        return report
 
     return _run_once
 
@@ -98,20 +108,41 @@ def _on_breaker_open(consecutive_failures: int) -> None:
 
 
 @watcher_app.command("run")
-def run(once: bool = typer.Option(False, "--once", help="Run a single watcher cycle.")) -> None:
+def run(
+    once: bool = typer.Option(False, "--once", help="Run a single watcher cycle."),
+    cycles: int | None = typer.Option(None, "--cycles", min=1, help="Run N bounded cycles."),
+    interval: int | None = typer.Option(None, "--interval", min=0, help="Override poll interval."),
+) -> None:
     cfg = Config.from_env()
     process = _process_factory(cfg)
-    if once:
-        typer.echo(process())
-        return
-    run_loop(
-        process,
-        poll_seconds=cfg.poll_seconds,
-        on_error=lambda exc: typer.echo(f"watcher cycle failed: {exc}", err=True),
-        max_backoff_seconds=cfg.max_backoff_seconds,
-        breaker_threshold=cfg.breaker_threshold,
-        on_breaker_open=_on_breaker_open,
-    )
+    max_cycles = 1 if once else cycles
+    poll_seconds = cfg.poll_seconds if interval is None else interval
+
+    with run_session(trigger="watcher.run", args={"once": once, "cycles": cycles}):
+        if max_cycles == 1:
+            report = process()
+            emit_heartbeat(job_name="watcher", outcome="ok", counts=report)
+            typer.echo(report)
+            return
+
+        last_report: dict | None = None
+
+        def _process_and_report():
+            nonlocal last_report
+            last_report = process()
+            typer.echo(last_report)
+            return last_report
+
+        run_loop(
+            _process_and_report,
+            poll_seconds=poll_seconds,
+            max_cycles=max_cycles,
+            on_error=lambda exc: typer.echo(f"watcher cycle failed: {exc}", err=True),
+            max_backoff_seconds=cfg.max_backoff_seconds,
+            breaker_threshold=cfg.breaker_threshold,
+            on_breaker_open=_on_breaker_open,
+        )
+        emit_heartbeat(job_name="watcher", outcome="ok", counts=last_report or {})
 
 
 @watcher_app.command("status")

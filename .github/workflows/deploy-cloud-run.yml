@@ -1,0 +1,140 @@
+name: Deploy Cloud Run jobs
+
+on:
+  workflow_dispatch:
+    inputs:
+      config-ref:
+        description: "Deployment config source; values come from environment vars/secrets."
+        required: false
+        default: "repo-environment"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Build image and deploy paused jobs
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      XSOURCE_CLOUD_RUN_PROJECT: ${{ vars.XSOURCE_CLOUD_RUN_PROJECT }}
+      XSOURCE_CLOUD_RUN_REGION: ${{ vars.XSOURCE_CLOUD_RUN_REGION }}
+      XSOURCE_ARTIFACT_REPOSITORY: ${{ vars.XSOURCE_ARTIFACT_REPOSITORY }}
+      XSOURCE_IMAGE_NAME: ${{ vars.XSOURCE_IMAGE_NAME || 'xsource' }}
+      XSOURCE_RUNTIME_SERVICE_ACCOUNT: ${{ vars.XSOURCE_RUNTIME_SERVICE_ACCOUNT }}
+      XSOURCE_FLEET_BUCKET: ${{ vars.XSOURCE_FLEET_BUCKET }}
+      XSOURCE_STATE_PREFIX: ${{ vars.XSOURCE_STATE_PREFIX || 'state/xsource' }}
+      XSOURCE_GMAIL_TOKEN_SECRET: ${{ vars.XSOURCE_GMAIL_TOKEN_SECRET }}
+      XSOURCE_SHEETS_TOKEN_SECRET: ${{ vars.XSOURCE_SHEETS_TOKEN_SECRET }}
+      XSOURCE_ANTHROPIC_API_KEY_SECRET: ${{ vars.XSOURCE_ANTHROPIC_API_KEY_SECRET }}
+      XSOURCE_GOOGLE_MAPS_API_KEY_SECRET: ${{ vars.XSOURCE_GOOGLE_MAPS_API_KEY_SECRET }}
+      XSOURCE_COMPANIES_HOUSE_API_KEY_SECRET: ${{ vars.XSOURCE_COMPANIES_HOUSE_API_KEY_SECRET }}
+      XSOURCE_WATCHER_JOB_NAME: ${{ vars.XSOURCE_WATCHER_JOB_NAME }}
+      XSOURCE_SYNC_JOB_NAME: ${{ vars.XSOURCE_SYNC_JOB_NAME }}
+      XSOURCE_SIGNALS_JOB_NAME: ${{ vars.XSOURCE_SIGNALS_JOB_NAME }}
+      XSOURCE_WATCHER_SCHEDULER_NAME: ${{ vars.XSOURCE_WATCHER_SCHEDULER_NAME }}
+      XSOURCE_SYNC_SCHEDULER_NAME: ${{ vars.XSOURCE_SYNC_SCHEDULER_NAME }}
+      XSOURCE_SIGNALS_SCHEDULER_NAME: ${{ vars.XSOURCE_SIGNALS_SCHEDULER_NAME }}
+      XSOURCE_WATCHER_SCHEDULE: ${{ vars.XSOURCE_WATCHER_SCHEDULE || '*/5 * * * *' }}
+      XSOURCE_SYNC_SCHEDULE: ${{ vars.XSOURCE_SYNC_SCHEDULE || '10 2 * * *' }}
+      XSOURCE_SIGNALS_SCHEDULE: ${{ vars.XSOURCE_SIGNALS_SCHEDULE || '5 7 * * *' }}
+      XSOURCE_SCHEDULER_TIME_ZONE: ${{ vars.XSOURCE_SCHEDULER_TIME_ZONE || 'Europe/London' }}
+      XSOURCE_RUNTIME_ENV: cloud_run
+      XSOURCE_EMIT_SIGNALS: "1"
+      XSOURCE_OWN_EMAILS: ${{ vars.XSOURCE_OWN_EMAILS }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Validate deployment config
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            XSOURCE_CLOUD_RUN_PROJECT
+            XSOURCE_CLOUD_RUN_REGION
+            XSOURCE_ARTIFACT_REPOSITORY
+            XSOURCE_RUNTIME_SERVICE_ACCOUNT
+            XSOURCE_FLEET_BUCKET
+            XSOURCE_GMAIL_TOKEN_SECRET
+            XSOURCE_SHEETS_TOKEN_SECRET
+            XSOURCE_ANTHROPIC_API_KEY_SECRET
+            XSOURCE_WATCHER_JOB_NAME
+            XSOURCE_SYNC_JOB_NAME
+            XSOURCE_SIGNALS_JOB_NAME
+            XSOURCE_WATCHER_SCHEDULER_NAME
+            XSOURCE_SYNC_SCHEDULER_NAME
+            XSOURCE_SIGNALS_SCHEDULER_NAME
+          )
+          for key in "${required[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "::error::${key} is required"
+              exit 1
+            fi
+          done
+
+      - name: Build and push image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${XSOURCE_CLOUD_RUN_REGION}-docker.pkg.dev/${XSOURCE_CLOUD_RUN_PROJECT}/${XSOURCE_ARTIFACT_REPOSITORY}/${XSOURCE_IMAGE_NAME}:${GITHUB_SHA}"
+          gcloud auth configure-docker "${XSOURCE_CLOUD_RUN_REGION}-docker.pkg.dev" --quiet
+          gcloud builds submit --project "${XSOURCE_CLOUD_RUN_PROJECT}" --tag "${image}" .
+          echo "XSOURCE_IMAGE=${image}" >> "${GITHUB_ENV}"
+
+      - name: Deploy jobs paused
+        shell: bash
+        run: |
+          set -euo pipefail
+          deploy_job() {
+            local job_name="$1"
+            shift
+            gcloud run jobs deploy ${job_name} \
+              --project "${XSOURCE_CLOUD_RUN_PROJECT}" \
+              --region "${XSOURCE_CLOUD_RUN_REGION}" \
+              --image "${XSOURCE_IMAGE}" \
+              --service-account "${XSOURCE_RUNTIME_SERVICE_ACCOUNT}" \
+              --set-env-vars "XSOURCE_RUNTIME_ENV=${XSOURCE_RUNTIME_ENV},XSOURCE_EMIT_SIGNALS=${XSOURCE_EMIT_SIGNALS},XSOURCE_OWN_EMAILS=${XSOURCE_OWN_EMAILS},XSOURCE_FLEET_BUCKET=${XSOURCE_FLEET_BUCKET},XSOURCE_STATE_PREFIX=${XSOURCE_STATE_PREFIX},XSOURCE_GMAIL_TOKEN_PATH=/secrets/gmail/token.json,XSOURCE_SHEETS_TOKEN_PATH=/secrets/sheets/token.json,ANTHROPIC_API_KEY_FILE=/secrets/anthropic/api-key,GOOGLE_MAPS_API_KEY_FILE=/secrets/google-maps/api-key,COMPANIES_HOUSE_API_KEY_FILE=/secrets/companies-house/api-key" \
+              --set-secrets "/secrets/gmail/token.json=${XSOURCE_GMAIL_TOKEN_SECRET}:latest,/secrets/sheets/token.json=${XSOURCE_SHEETS_TOKEN_SECRET}:latest,/secrets/anthropic/api-key=${XSOURCE_ANTHROPIC_API_KEY_SECRET}:latest,/secrets/google-maps/api-key=${XSOURCE_GOOGLE_MAPS_API_KEY_SECRET}:latest,/secrets/companies-house/api-key=${XSOURCE_COMPANIES_HOUSE_API_KEY_SECRET}:latest" \
+              -- "$@"
+          }
+
+          deploy_job "${XSOURCE_WATCHER_JOB_NAME}" xsource watcher run --cycles 4 --interval 60
+          deploy_job "${XSOURCE_SYNC_JOB_NAME}" xsource request sync-all
+          deploy_job "${XSOURCE_SIGNALS_JOB_NAME}" xsource signals scan
+
+      - name: Create paused schedulers
+        shell: bash
+        run: |
+          set -euo pipefail
+          create_scheduler() {
+            local scheduler_name="$1"
+            local schedule="$2"
+            local job_name="$3"
+            if ! gcloud scheduler jobs describe "${scheduler_name}" \
+              --project "${XSOURCE_CLOUD_RUN_PROJECT}" \
+              --location "${XSOURCE_CLOUD_RUN_REGION}" >/dev/null 2>&1; then
+              gcloud scheduler jobs create http "${scheduler_name}" \
+                --project "${XSOURCE_CLOUD_RUN_PROJECT}" \
+                --location "${XSOURCE_CLOUD_RUN_REGION}" \
+                --schedule "${schedule}" \
+                --time-zone "${XSOURCE_SCHEDULER_TIME_ZONE}" \
+                --uri "https://${XSOURCE_CLOUD_RUN_REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${XSOURCE_CLOUD_RUN_PROJECT}/jobs/${job_name}:run" \
+                --http-method POST \
+                --oauth-service-account-email "${XSOURCE_RUNTIME_SERVICE_ACCOUNT}"
+            fi
+            gcloud scheduler jobs pause ${scheduler_name} \
+              --project "${XSOURCE_CLOUD_RUN_PROJECT}" \
+              --location "${XSOURCE_CLOUD_RUN_REGION}"
+          }
+
+          create_scheduler "${XSOURCE_WATCHER_SCHEDULER_NAME}" "${XSOURCE_WATCHER_SCHEDULE}" "${XSOURCE_WATCHER_JOB_NAME}"
+          create_scheduler "${XSOURCE_SYNC_SCHEDULER_NAME}" "${XSOURCE_SYNC_SCHEDULE}" "${XSOURCE_SYNC_JOB_NAME}"
+          create_scheduler "${XSOURCE_SIGNALS_SCHEDULER_NAME}" "${XSOURCE_SIGNALS_SCHEDULE}" "${XSOURCE_SIGNALS_JOB_NAME}"

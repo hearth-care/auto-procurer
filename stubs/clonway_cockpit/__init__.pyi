@@ -34,5 +34,5 @@ class usage:
 class obs:
     @staticmethod
     def make_obs(
-        *, worker_id: str, reserved_prefix: str
+        *, worker_id: str, runtime_env: str | None = None, reserved_prefix: str
     ) -> tuple[Callable[..., None], Any]: ...

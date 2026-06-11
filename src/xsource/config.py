@@ -29,6 +29,8 @@ class Config:
     staff_share_group: str | None
     state_dir: str
     model_chain: list[str]
+    fleet_bucket: str | None
+    state_prefix: str
 
     @classmethod
     def from_env(cls) -> Config:
@@ -57,4 +59,6 @@ class Config:
                 "XSOURCE_STATE_DIR", os.path.expanduser("~/.claude-inbox/xsource/state")
             ),
             model_chain=chain,
+            fleet_bucket=os.environ.get("XSOURCE_FLEET_BUCKET") or None,
+            state_prefix=os.environ.get("XSOURCE_STATE_PREFIX", "state/xsource").strip("/"),
         )
