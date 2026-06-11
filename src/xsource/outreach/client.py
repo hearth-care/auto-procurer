@@ -11,6 +11,14 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any
 
+from clonway_cockpit.mail_identity import MailIdentity, format_from_header
+
+_MILO_GARTH_IDENTITY = MailIdentity(
+    address="milo.garth@clonwaycare.co.uk",
+    display_name="Milo Garth",
+    source="xsource.outreach",
+)
+
 
 class OutreachDraftBlocked(RuntimeError):
     """Raised when a draft request violates xsource's safety invariants."""
@@ -36,6 +44,7 @@ class SafeOutreachClient:
 
         try:
             mime = MIMEMultipart("alternative")
+            mime["From"] = format_from_header(_MILO_GARTH_IDENTITY)
             mime["To"] = to
             mime["Subject"] = subject
             mime.attach(MIMEText(body, "plain", _charset="utf-8"))

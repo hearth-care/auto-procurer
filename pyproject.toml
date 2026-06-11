@@ -28,7 +28,7 @@ packages = ["src/xsource"]
 # CI / `copier update` can repin; a local smoke build overrides this to a path
 # source via [tool.uv.sources] in a uv override.
 [tool.uv.sources]
-clonway-cockpit = { git = "https://github.com/hearth-care/clonway-cockpit.git", rev = "main" }
+clonway-cockpit = { git = "https://github.com/hearth-care/clonway-cockpit.git", rev = "4c63daf56500aecbb7e78c19660cbf94bd5c50ee" }
 
 [dependency-groups]
 dev = [

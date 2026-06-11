@@ -56,6 +56,7 @@ def test_create_draft_posts_to_gmail_drafts_only():
     assert created["userId"] == "me"
     raw = created["body"]["message"]["raw"]
     mime = message_from_bytes(base64.urlsafe_b64decode(raw.encode("ascii")))
+    assert mime["From"] == "Milo Garth <milo.garth@clonwaycare.co.uk>"
     assert mime["To"] == "quotes@example.com"
     assert mime["Subject"] == "Tree chipping quote"
     assert "ref r-0042" in mime.get_payload()[0].get_payload(decode=True).decode("utf-8")
