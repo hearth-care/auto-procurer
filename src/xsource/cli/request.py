@@ -157,4 +157,10 @@ def reorder(supplier_id: str) -> None:
     """Open a prefilled reorder review for a recurring supplier (opens cockpit)."""
     from xsource.cli.cockpit import run_cockpit
 
-    run_cockpit()
+    cfg = Config.from_env()
+    suppliers, _ = build_stores(cfg)
+    supplier = next((s for s in suppliers.all() if s.id == supplier_id), None)
+    if supplier is None:
+        raise typer.BadParameter(f"unknown supplier id {supplier_id}")
+
+    run_cockpit(focus=f"request.reorder:{supplier_id}")

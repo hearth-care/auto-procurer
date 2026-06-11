@@ -173,3 +173,126 @@ def test_new_cli_commands_are_registered():
     assert "trigger" in result.stdout
     assert "followup" in result.stdout
     assert "reorder" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# request.new and request.outreach must not advertise fictional CLI commands
+# ---------------------------------------------------------------------------
+
+
+def test_request_new_has_no_equivalent_cli():
+    from clonway_cockpit import registry
+
+    from xsource.cli import cockpit
+
+    cockpit.register_all()
+    specs = {spec.key: spec for spec in registry.get_capabilities()}
+    assert specs["request.new"].equivalent_cli is None
+
+
+def test_request_outreach_has_no_equivalent_cli():
+    from clonway_cockpit import registry
+
+    from xsource.cli import cockpit
+
+    cockpit.register_all()
+    specs = {spec.key: spec for spec in registry.get_capabilities()}
+    assert specs["request.outreach"].equivalent_cli is None
+
+
+# ---------------------------------------------------------------------------
+# re-tender: incumbent supplier always present in shortlist (category mismatch)
+# ---------------------------------------------------------------------------
+
+
+def test_reorder_retender_includes_incumbent_on_category_mismatch(monkeypatch):
+    """When the incumbent's category doesn't match triage, they must still appear first."""
+    from clonway_cockpit.registry import WizardContext
+    from rich.console import Console
+
+    from xsource.cli import cockpit as cmod
+    from xsource.research.candidates import Candidate
+    from xsource.research.pipeline import ResearchResult, RunCaps
+    from xsource.store.models import Supplier
+
+    incumbent = Supplier(
+        id="s-plumber-1",
+        name="Bob's Plumbing",
+        categories=["plumbing"],
+        email="bob@example.com",
+        phone="01234 567890",
+    )
+
+    # Triage returns "heating" — different category, so find_matches won't pick up incumbent
+    def _fake_triage_step(ctx, bag):
+        from clonway_cockpit.walk import StepResult
+
+        return StepResult(
+            ok=True,
+            data={
+                "triage": {
+                    "category": "heating",
+                    "search_terms": [],
+                    "also_try": [],
+                    "tags": [],
+                    "email_vars": {"job_summary": "annual boiler check", "location_town": ""},
+                }
+            },
+        )
+
+    # Research returns zero book matches (category mismatch) + one web candidate
+    web_candidate = Candidate(
+        name="Hot Boilers Ltd",
+        source="places",
+        phone="09876 543210",
+        email=None,
+        website=None,
+        address=None,
+        postcode=None,
+        source_url=None,
+        rating=4.5,
+        review_count=20,
+        rating_scale=5,
+        extra={},
+    )
+
+    def _fake_research_step(ctx, bag):
+        from clonway_cockpit.walk import StepResult
+
+        return StepResult(
+            ok=True,
+            data={
+                "result": ResearchResult(
+                    shortlist=[web_candidate], indicative=None, stages={}, caps=RunCaps(0, 0)
+                )
+            },
+        )
+
+    monkeypatch.setattr(cmod, "_triage_step", _fake_triage_step)
+    monkeypatch.setattr(cmod, "_research_step", _fake_research_step)
+
+    ctx = WizardContext(
+        state={},
+        client=None,
+        console=Console(quiet=True),
+        input_fn=lambda *a, **k: "b",  # "b" = re-tender
+        confirm_fn=lambda _p: True,
+        read_key=lambda: "b",
+    )
+
+    bag = {
+        "raw_need": "annual boiler check",
+        "constraints": {"radius_miles": 10, "reorder_supplier_id": "s-plumber-1"},
+        "reorder_decision": "retender",
+        "reorder_supplier": incumbent,
+        "reorder_proposal": type(
+            "P", (), {"category": "plumbing", "raw_need": "annual boiler check"}
+        )(),
+    }
+
+    result = cmod._reorder_research_step(ctx, bag)
+
+    assert result.ok, result.message
+    shortlist_ids = [c.extra.get("supplier_id") for c in result.data["result"].shortlist]
+    assert "s-plumber-1" in shortlist_ids, f"Incumbent missing from shortlist: {shortlist_ids}"
+    assert shortlist_ids[0] == "s-plumber-1", "Incumbent should be first in shortlist"

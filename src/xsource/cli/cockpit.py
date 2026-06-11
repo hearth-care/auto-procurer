@@ -513,6 +513,7 @@ def _followup_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
         operator_name=cfg.operator_display_name,
         now=dt.datetime.now(dt.UTC),
     )
+    requests_.upsert(request)
     return StepResult(
         ok=True,
         data={"summary": f"Created draft {result['draft_id']} for {supplier.name}."},
@@ -620,14 +621,48 @@ def _reorder_research_step(ctx: WizardContext, bag: dict) -> StepResult:
         }
         return StepResult(ok=True, data={"triage": triage, "result": result})
 
-    # re-tender: run normal triage + research with incumbent pre-seeded
+    # re-tender: run normal triage + research, then guarantee incumbent is in the shortlist
     triage_result = _triage_step(ctx, bag)
     if not triage_result.ok:
         return triage_result
     bag_with_triage = {**bag, **(triage_result.data or {})}
 
-    # Ensure incumbent appears in book_matches by pre-loading from the store
     research_result = _research_step(ctx, bag_with_triage)
+    if not research_result.ok:
+        return research_result
+
+    # Inject incumbent into shortlist when category mismatch means find_matches missed them
+    data = research_result.data or {}
+    result = data["result"]
+    if not any(c.extra.get("supplier_id") == supplier.id for c in result.shortlist):
+        from xsource.research.pipeline import ResearchResult
+
+        incumbent = Candidate(
+            name=supplier.name,
+            source="book",
+            phone=supplier.phone,
+            email=supplier.email,
+            website=supplier.website,
+            address=supplier.address,
+            postcode=supplier.postcode,
+            source_url=supplier.source_url,
+            rating=None,
+            review_count=None,
+            rating_scale=None,
+            extra={"supplier_id": supplier.id},
+        )
+        research_result = StepResult(
+            ok=True,
+            data={
+                **data,
+                "result": ResearchResult(
+                    shortlist=[incumbent] + list(result.shortlist),
+                    indicative=result.indicative,
+                    stages=result.stages,
+                    caps=result.caps,
+                ),
+            },
+        )
     return research_result
 
 
@@ -653,7 +688,7 @@ def register_all() -> None:
             shelf="A",
             title="New request",
             summary="Plain-English need to a pre-filled supplier shortlist Sheet.",
-            equivalent_cli="xsource request new",
+            equivalent_cli=None,  # type: ignore[arg-type]
             run=_request_new_handler,
             blast_radius=_REQUEST_NEW_BLAST,
         )
@@ -664,7 +699,7 @@ def register_all() -> None:
             shelf="E",
             title="Draft outreach",
             summary="Create draft-only quote requests for suppliers on an open request.",
-            equivalent_cli="xsource request outreach",
+            equivalent_cli=None,  # type: ignore[arg-type]
             run=_request_outreach_handler,
             blast_radius=_REQUEST_OUTREACH_BLAST,
         )
@@ -974,18 +1009,26 @@ def _host(*, agent_mode: bool = False) -> shell.Host:
     )
 
 
-def run_cockpit(*, read_key=keys.read_key, screen=None) -> None:
+def run_cockpit(*, read_key=keys.read_key, screen=None, focus: str | None = None) -> None:
     host = _host()
+    # When a focus is provided, derive the capability key from the "key:value" focus prefix.
+    cap_key = focus.split(":")[0] if focus and ":" in focus else None
     if screen is not None:
         host.on_open()
-        shell._home(host, screen, read_key)
+        if cap_key:
+            shell._open_capability(host, cap_key, screen, read_key, focus=focus)  # type: ignore[attr-defined]
+        else:
+            shell._home(host, screen, read_key)
         return
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return
     console = Console()
     host.on_open()
     with console.screen() as scr:
-        shell._home(host, scr, read_key)
+        if cap_key:
+            shell._open_capability(host, cap_key, scr, read_key, focus=focus)  # type: ignore[attr-defined]
+        else:
+            shell._home(host, scr, read_key)
 
 
 def serve_agent(*, stdin=sys.stdin, stdout=sys.stdout, allow_apply: bool = False) -> None:

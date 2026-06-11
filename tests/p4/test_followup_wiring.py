@@ -110,3 +110,86 @@ def test_followup_draft_uses_operator_name_param():
 
     assert "Jane" in client.calls[0]["body"]
     assert "Milo" not in client.calls[0]["body"]
+
+
+# ---------------------------------------------------------------------------
+# followup metadata must be persisted to the store after draft creation
+# ---------------------------------------------------------------------------
+
+
+def test_followup_apply_step_persists_metadata_via_upsert(monkeypatch):
+    """After a successful draft, followup_* fields must be written to the store (upsert)."""
+
+    from xsource.cli import cockpit as cmod
+
+    request = Request(
+        id="r-0042",
+        created_at="2026-06-10T15:58:00+00:00",
+        raw_need="tree chipping",
+        shortlist=[
+            ShortlistEntry(
+                supplier_id="s-1",
+                rank=1,
+                reply={"summary": "Asked to visit before quoting."},
+            )
+        ],
+    )
+    supplier = Supplier(id="s-1", name="Tree Co", email="quotes@example.com")
+
+    upserted: list = []
+
+    class _FakeRequests:
+        offline = False
+
+        def get(self, id_):
+            return request
+
+        def all(self):
+            return [request]
+
+        def upsert(self, r):
+            upserted.append(r)
+
+    class _FakeSuppliers:
+        offline = False
+
+        def all(self):
+            return [supplier]
+
+    class _FakeCfg:
+        operator_display_name = "Jane"
+
+    class _FakeDraftClient:
+        def create_draft(self, *, to, subject, body, label):
+            return {"draft_id": "fd-1", "message_id": "fm-1", "thread_id": "thr-1"}
+
+    class _FakeService:
+        pass
+
+    monkeypatch.setattr(cmod, "build_stores", lambda cfg: (_FakeSuppliers(), _FakeRequests()))
+    monkeypatch.setattr(cmod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
+    monkeypatch.setenv("XSOURCE_GMAIL_TOKEN_PATH", "/nonexistent")
+
+    import xsource.outreach.client as out_mod
+
+    monkeypatch.setattr(out_mod, "SafeOutreachClient", lambda svc: _FakeDraftClient())
+
+    import importlib
+
+    google_oauth2 = importlib.import_module("google.oauth2.credentials")
+    monkeypatch.setattr(
+        google_oauth2.Credentials,
+        "from_authorized_user_file",
+        staticmethod(lambda path: None),
+    )
+
+    import googleapiclient.discovery as disco
+
+    monkeypatch.setattr(disco, "build", lambda *a, **k: _FakeService())
+
+    ctx = _ctx(confirm=True)
+    result = cmod._followup_apply_step(ctx, {"request_id": "r-0042", "supplier_id": "s-1"})
+
+    assert result.ok, result.message
+    assert len(upserted) == 1, "upsert must be called exactly once"
+    assert upserted[0].shortlist[0].outreach["followup_status"] == "draft_ready"
