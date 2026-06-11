@@ -1,0 +1,1 @@
+{"worker":"xsource","kind":"payment.required","title":"Invoice INV-100 - Smith Heating","detail":"GBP 125.00 - Boiler repair","due_at":"2026-06-03","urgency":"normal","level":"warn","capability_key":"invoice.capture","focus":"i-0001","dedup_key":"xsource|invoice|i-0001","state":"open","source_ref":"i-0001","source_id":"i-0001","emitted_at":"2026-06-01T07:00:00+00:00"}

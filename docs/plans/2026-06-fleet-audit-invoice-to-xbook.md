@@ -204,11 +204,12 @@ can't drift silently.
 
 ### Phase 4 — contract artifact (Wave 3, S)
 
-- [ ] `docs/contracts/payment-required-v1.md`: the contract above, frozen.
-- [ ] Shared fixtures: a golden `latest.jsonl` slice + ack records; a contract
+- [x] `docs/contracts/payment-required-v1.md`: the contract above, frozen.
+- [x] Shared fixtures: a golden `latest.jsonl` slice + ack records; a contract
       test that validates the emitter's output against the fixtures.
 - [ ] Hand the fixture set to the books-worker repo (cross-repo PR, tracked
-      there).
+      there). Deferred by dispatch rule for PR #13: stay on this PR, never open
+      another PR. The in-repo fixture set is ready for the books-worker consumer.
 
 ## Acceptance criteria
 
@@ -261,7 +262,7 @@ can't drift silently.
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 4 — contract artifact.
+- Current phase: final gates and PR finish protocol.
 - Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
   `invoices.jsonl` `SyncedStore`, and focused tests.
 - Completed: Phase 2 capture/import/CLI/cockpit slice with price-history linkage,
@@ -269,12 +270,17 @@ can't drift silently.
   `xsource invoice` commands, `invoice.capture`, and the invoices attention pill.
 - Completed: Phase 3 signal/ack slice with `payment.required`, overdue escalation,
   rejected-invoice `action.required`, `xsource invoice sync-acks`, and ack transitions.
+- Completed: Phase 4 in-repo contract artifact with
+  `docs/contracts/payment-required-v1.md`, `tests/contracts/fixtures/latest.jsonl`,
+  `tests/contracts/fixtures/acks.jsonl`, and a fixture-backed contract test.
 - Verification: `uv run pytest tests/store/test_models.py tests/store/test_remote.py -q`
   returned `19 passed in 0.03s`.
 - Verification: `uv run pytest tests/invoices/test_capture.py tests/cli/test_runtime_commands.py tests/test_cockpit_render.py -q`
   returned `11 passed in 4.88s`.
 - Verification: `uv run pytest tests/test_signals_build.py tests/invoices/test_acks.py tests/cli/test_runtime_commands.py -q`
   returned `16 passed in 6.40s`.
+- Verification: `uv run pytest tests/contracts/test_payment_required_contract.py -q`
+  returned `3 passed in 0.01s`.
 - Decisions: `build_stores` now returns `(suppliers, requests, invoices)`; existing callers
   ignore the invoice store until their phase uses it.
 - Decisions: invoice capture stores money as `amount_minor`; variance checks normalise older
@@ -285,6 +291,8 @@ can't drift silently.
   Sheet request sync.
 - Deviation: signal builders stay pure like existing horizon builders; they do not mutate
   invoice status to `emitted`. Ack ingestion owns lifecycle transitions.
+- Deferred: cross-repo fixture handoff to the books-worker repo, because this dispatch
+  explicitly forbids opening another PR. The fixture set exists in this PR.
 - Known-failing tests: none at this handoff point.
-- Next concrete step: write the payment-required v1 contract doc, golden signal/ack fixtures,
-  and a fixture-backed contract test.
+- Next concrete step: run full local gates, rebase onto latest `origin/main`, push, and finish
+  the PR protocol.
