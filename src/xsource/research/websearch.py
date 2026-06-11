@@ -41,16 +41,24 @@ _EXTRACT_INSTRUCTION = (
 )
 
 
+def _is_retriable_error(exc: Exception) -> bool:
+    return type(exc).__name__ in {"InternalServerError", "OverloadedError", "APIStatusError"}
+
+
 class AnthropicSearcher:
-    def __init__(self, api_key: str, model: str):
+    def __init__(self, api_key: str, model: str, model_chain: list[str] | None = None):
         import anthropic
 
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = model
+        self.model_chain: list[str] = model_chain if model_chain else [model]
 
-    def extract(self, query: str, schema: dict) -> dict:
+    @property
+    def model(self) -> str:
+        return self.model_chain[0]
+
+    def _extract_with_model(self, model: str, query: str, schema: dict) -> dict:
         resp = self.client.messages.create(
-            model=self.model,
+            model=model,
             max_tokens=2000,
             system=_EXTRACT_INSTRUCTION,
             tools=[
@@ -74,6 +82,21 @@ class AnthropicSearcher:
             ):
                 return cast(dict, block_any.input)
         log.warning("websearch returned no report tool call for %r", query)
+        return {"candidates": []}
+
+    def extract(self, query: str, schema: dict) -> dict:
+        for i, model in enumerate(self.model_chain):
+            try:
+                return self._extract_with_model(model, query, schema)
+            except Exception as exc:
+                if not _is_retriable_error(exc) or i == len(self.model_chain) - 1:
+                    raise
+                log.warning(
+                    "websearch model %r unavailable (%s), falling back to %r",
+                    model,
+                    exc,
+                    self.model_chain[i + 1],
+                )
         return {"candidates": []}
 
 

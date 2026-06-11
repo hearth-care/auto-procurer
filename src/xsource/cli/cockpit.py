@@ -159,16 +159,38 @@ def _need_step(ctx: WizardContext, bag: dict) -> StepResult:
     )
 
 
+def _is_retriable_anthropic_error(exc: Exception) -> bool:
+    """Return True for availability errors that warrant trying the next model.
+
+    Auth errors and bad-request errors are NOT retriable — they indicate a
+    misconfiguration that a different model cannot fix.
+    """
+    err_type = type(exc).__name__
+    # anthropic SDK raises these for availability/overload; everything else
+    # (AuthenticationError, BadRequestError) is a hard failure.
+    return err_type in {"InternalServerError", "OverloadedError", "APIStatusError"}
+
+
 class _AnthropicStructuredGateway:
-    def __init__(self) -> None:
+    def __init__(self, model_chain: list[str] | None = None) -> None:
         import anthropic
 
         self.client = anthropic.Anthropic(api_key=secret_from_env("ANTHROPIC_API_KEY"))
-        self.model = os.environ.get("XSOURCE_RESEARCH_MODEL", "claude-sonnet-4-6")
+        if model_chain:
+            self.model_chain = list(model_chain)
+        else:
+            single = os.environ.get("XSOURCE_RESEARCH_MODEL", "")
+            chain_env = os.environ.get("XSOURCE_MODEL_CHAIN", "")
+            if chain_env:
+                self.model_chain = [m.strip() for m in chain_env.split(",") if m.strip()]
+            elif single:
+                self.model_chain = [single]
+            else:
+                self.model_chain = ["claude-sonnet-4-6"]
 
-    def complete_structured(self, messages, schema, role: str = "research") -> dict:
+    def _call_model(self, model: str, messages, schema) -> dict:
         resp = self.client.messages.create(
-            model=self.model,
+            model=model,
             max_tokens=1200,
             tools=[
                 {
@@ -187,11 +209,35 @@ class _AnthropicStructuredGateway:
                 and getattr(block_any, "name", None) == "report"
             ):
                 return cast(dict, block_any.input)
-        raise RuntimeError(f"{role} model returned no report tool call")
+        raise RuntimeError(f"model {model} returned no report tool call")
+
+    def complete_structured(self, messages, schema, role: str = "research") -> dict:
+        from xsource.obs import event as obs_event
+
+        last_exc: Exception | None = None
+        for i, model in enumerate(self.model_chain):
+            try:
+                return self._call_model(model, messages, schema)
+            except Exception as exc:
+                if not _is_retriable_anthropic_error(exc) or i == len(self.model_chain) - 1:
+                    raise
+                obs_event(
+                    "gateway.model_fallback",
+                    severity="warn",
+                    role=role,
+                    failed_model=model,
+                    next_model=self.model_chain[i + 1],
+                    error=str(exc),
+                )
+                last_exc = exc
+        raise RuntimeError(f"{role} model chain exhausted") from last_exc
 
 
 def _triage_step(ctx: WizardContext, bag: dict) -> StepResult:
-    triage = run_triage(bag["raw_need"], bag["constraints"], _AnthropicStructuredGateway())
+    cfg = Config.from_env()
+    triage = run_triage(
+        bag["raw_need"], bag["constraints"], _AnthropicStructuredGateway(cfg.model_chain)
+    )
     return StepResult(ok=True, data={"triage": triage.to_dict()})
 
 
@@ -322,7 +368,7 @@ def _outreach_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
         requests=requests_,
         draft_client=SafeOutreachClient(service),
         now=dt.datetime.now(dt.UTC),
-        gateway=_AnthropicStructuredGateway(),
+        gateway=_AnthropicStructuredGateway(Config.from_env().model_chain),
     )
     return StepResult(
         ok=True,

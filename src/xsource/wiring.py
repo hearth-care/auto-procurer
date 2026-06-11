@@ -38,7 +38,8 @@ def build_research_fns(cfg: Config):
     ch_key = os.environ.get("COMPANIES_HOUSE_API_KEY", "")
     searcher = websearch.AnthropicSearcher(
         api_key=secret_from_env("ANTHROPIC_API_KEY"),
-        model=os.environ.get("XSOURCE_RESEARCH_MODEL", "claude-sonnet-4-6"),
+        model=cfg.model_chain[0],
+        model_chain=cfg.model_chain,
     )
     return {
         "places_fn": partial(_places, cfg, maps_key),
