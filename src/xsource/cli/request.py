@@ -9,6 +9,8 @@ from typing import Any
 import typer
 
 from xsource.config import Config
+from xsource.obs import run_session
+from xsource.runtime import emit_heartbeat
 from xsource.sheet.client import SheetClient
 from xsource.sheet.sync import apply_sheet_rows
 from xsource.wiring import build_stores
@@ -55,18 +57,20 @@ def sync_all_requests(*, suppliers, requests, sheets, synced_at: dt.datetime) ->
 def sync(request_id: str) -> None:
     cfg = Config.from_env()
     suppliers, requests = build_stores(cfg)
-    request = requests.get(request_id)
-    if request is None:
-        raise typer.BadParameter(f"unknown request id {request_id}")
-    if not request.sheet_id:
-        raise typer.BadParameter(f"request {request_id} has no sheet_id")
-    report = sync_one_request(
-        request=request,
-        suppliers=suppliers,
-        requests=requests,
-        sheets=_sheet_client(),
-        synced_at=dt.datetime.now(dt.UTC),
-    )
+    with run_session(trigger="request.sync", args={"request_id": request_id}):
+        request = requests.get(request_id)
+        if request is None:
+            raise typer.BadParameter(f"unknown request id {request_id}")
+        if not request.sheet_id:
+            raise typer.BadParameter(f"request {request_id} has no sheet_id")
+        report = sync_one_request(
+            request=request,
+            suppliers=suppliers,
+            requests=requests,
+            sheets=_sheet_client(),
+            synced_at=dt.datetime.now(dt.UTC),
+        )
+        emit_heartbeat(job_name="request-sync", outcome="ok", counts=report)
     typer.echo(report)
 
 
@@ -74,10 +78,12 @@ def sync(request_id: str) -> None:
 def sync_all() -> None:
     cfg = Config.from_env()
     suppliers, requests = build_stores(cfg)
-    report = sync_all_requests(
-        suppliers=suppliers,
-        requests=requests,
-        sheets=_sheet_client(),
-        synced_at=dt.datetime.now(dt.UTC),
-    )
+    with run_session(trigger="request.sync-all", args={}):
+        report = sync_all_requests(
+            suppliers=suppliers,
+            requests=requests,
+            sheets=_sheet_client(),
+            synced_at=dt.datetime.now(dt.UTC),
+        )
+        emit_heartbeat(job_name="request-sync-all", outcome="ok", counts=report)
     typer.echo(report)

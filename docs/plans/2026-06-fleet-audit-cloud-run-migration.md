@@ -197,11 +197,11 @@ plists — the GCS-synced stores mean state follows whichever runner is active.
 
 ### Phase 3 — state gaps + batched watcher (M)
 
-- [ ] Blob-sync wrappers for `watcher.sqlite3` and the budget ledger.
-- [ ] `watcher run --cycles N --interval S` bounded-batch mode (builds on the
+- [x] Blob-sync wrappers for `watcher.sqlite3` and the budget ledger.
+- [x] `watcher run --cycles N --interval S` bounded-batch mode (builds on the
       existing `--once` and `run_loop(max_cycles=…)` seams,
       `src/xsource/watcher/loop.py:14`).
-- [ ] Heartbeat event in each entry point's `run_session`.
+- [x] Heartbeat event in each entry point's `run_session`.
 - Tests: dedup DB round-trip; batch mode runs N cycles then exits; heartbeat
   payload shape.
 
@@ -267,8 +267,8 @@ plists — the GCS-synced stores mean state follows whichever runner is active.
 ## HANDOFF NOTES
 
 - Agent: builder-codex-20260611T200954Z-94309.
-- Current phase: Phase 3 next. Phase 1 and Phase 2 repo artefacts are implemented in this PR branch.
-- Decisions taken: watcher uses scheduled Cloud Run job with `xsource watcher run --cycles 4 --interval 60`; deploy workflow creates schedulers paused and reads concrete fleet values from repo environment variables/secrets, not checked-in docs. `XSOURCE_RUNTIME_ENV=cloud_run` enables the shared Cloud Logging mirror; signal GCS project now defaults to ADC unless `XSOURCE_GCP_PROJECT` is set for local/legacy use.
+- Current phase: Phase 4 docs/operator runbook next. Phase 1, Phase 2, and Phase 3 repo artefacts are implemented in this PR branch.
+- Decisions taken: watcher uses scheduled Cloud Run job with `xsource watcher run --cycles 4 --interval 60`; deploy workflow creates schedulers paused and reads concrete fleet values from repo environment variables/secrets, not checked-in docs. `XSOURCE_RUNTIME_ENV=cloud_run` enables the shared Cloud Logging mirror; signal GCS project now defaults to ADC unless `XSOURCE_GCP_PROJECT` is set for local/legacy use. State blobs use `XSOURCE_FLEET_BUCKET` and `XSOURCE_STATE_PREFIX`; absent bucket keeps local/dev offline instead of committing concrete fleet identifiers.
 - Operator-only follow-up: manual Cloud Run credential-read smoke still needs real mounted secret values.
-- Verification so far: `uv run pytest tests/deploy/test_cloud_run_phase1.py -q` -> 3 passed; `uv run pytest tests/test_runtime_env.py tests/deploy/test_cloud_run_phase2.py -q` -> 4 passed; `uv run ruff check src/xsource/obs.py src/xsource/signals/emit.py scripts/provision_cloud_run.py tests/test_runtime_env.py tests/deploy/test_cloud_run_phase2.py` -> All checks passed; `uv run mypy src` -> Success.
+- Verification so far: `uv run pytest tests/deploy/test_cloud_run_phase1.py -q` -> 3 passed; `uv run pytest tests/test_runtime_env.py tests/deploy/test_cloud_run_phase2.py -q` -> 4 passed; `uv run pytest tests/test_config.py::test_fleet_state_config_comes_from_env tests/store/test_blob_file.py tests/test_budget.py::test_budget_can_sync_ledger_blob tests/watcher/test_cli_run.py tests/test_heartbeats.py -q` -> 6 passed; targeted ruff checks -> All checks passed; `uv run mypy src` -> Success.
 - Known failing tests: none from the current targeted slice.
