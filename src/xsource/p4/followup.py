@@ -8,12 +8,10 @@ from xsource.outreach.drafts import OUTBOX_LABEL
 from xsource.store.models import Request, Supplier
 
 
-def create_followup_draft(
+def build_followup_draft(
     request: Request,
     supplier: Supplier,
     *,
-    draft_client,
-    now: dt.datetime,
     operator_name: str = "Milo",
 ) -> dict[str, str]:
     if not supplier.email:
@@ -31,12 +29,32 @@ def create_followup_draft(
             f"ref {request.id}",
         ]
     )
+    return {
+        "to": supplier.email,
+        "subject": f"Re: {request.raw_need}",
+        "body": body,
+        "label": OUTBOX_LABEL,
+    }
+
+
+def create_followup_draft(
+    request: Request,
+    supplier: Supplier,
+    *,
+    draft_client,
+    now: dt.datetime,
+    operator_name: str = "Milo",
+) -> dict[str, str]:
+    draft = build_followup_draft(request, supplier, operator_name=operator_name)
+    entry = next((item for item in request.shortlist if item.supplier_id == supplier.id), None)
     metadata = draft_client.create_draft(
-        to=supplier.email,
-        subject=f"Re: {request.raw_need}",
-        body=body,
-        label=OUTBOX_LABEL,
+        to=draft["to"],
+        subject=draft["subject"],
+        body=draft["body"],
+        label=draft["label"],
     )
+    if entry is None:
+        raise KeyError(supplier.id)
     entry.outreach["followup_status"] = "draft_ready"
     entry.outreach["followup_draft_id"] = metadata["draft_id"]
     entry.outreach["followup_drafted_at"] = now.isoformat()

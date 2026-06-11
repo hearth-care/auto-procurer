@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import datetime as dt
+import io
 
 from clonway_cockpit.registry import WizardContext
 from rich.console import Console
+from typer.testing import CliRunner
 
+from xsource.cli import app
 from xsource.cli.cockpit import _followup_apply_step, _followup_select_step
 from xsource.p4.followup import create_followup_draft
 from xsource.store.models import Request, ShortlistEntry, Supplier
@@ -21,6 +24,53 @@ def _ctx(*, confirm=True) -> WizardContext:
         confirm_fn=lambda _p: confirm,
         read_key=lambda: "a" if confirm else "\x1b",
     )
+
+
+def _request_with_replies() -> Request:
+    return Request(
+        id="r-0042",
+        created_at="2026-06-10T15:58:00+00:00",
+        raw_need="tree chipping",
+        shortlist=[
+            ShortlistEntry(
+                supplier_id="s-1",
+                rank=1,
+                reply={"summary": "Asked to visit before quoting."},
+            ),
+            ShortlistEntry(supplier_id="s-2", rank=2),
+        ],
+    )
+
+
+class _FakeRequests:
+    offline = False
+
+    def __init__(self, request: Request):
+        self.request = request
+        self.upserted: list[Request] = []
+
+    def get(self, id_):
+        return self.request if id_ == self.request.id else None
+
+    def all(self):
+        return [self.request]
+
+    def upsert(self, request):
+        self.upserted.append(request)
+
+
+class _FakeSuppliers:
+    offline = False
+
+    def __init__(self, suppliers: list[Supplier]):
+        self.suppliers = suppliers
+
+    def all(self):
+        return self.suppliers
+
+
+class _FakeCfg:
+    operator_display_name = "Jane"
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +92,18 @@ def test_followup_select_step_requires_request_id():
     assert not result.ok
 
 
-def test_followup_select_step_returns_ids():
+def test_followup_select_step_returns_ids(monkeypatch):
+    from xsource.cli import cockpit as cmod
+
+    request = _request_with_replies()
+    supplier = Supplier(id="s-1", name="Tree Co", email="quotes@example.com")
+    monkeypatch.setattr(
+        cmod,
+        "build_stores",
+        lambda cfg: (_FakeSuppliers([supplier]), _FakeRequests(request)),
+    )
+    monkeypatch.setattr(cmod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
+
     inputs = iter(["r-0042", "s-1"])
     ctx = WizardContext(
         state={},
@@ -58,6 +119,41 @@ def test_followup_select_step_returns_ids():
     assert result.data["supplier_id"] == "s-1"
 
 
+def test_followup_select_step_lists_replied_suppliers_and_previews_body(monkeypatch):
+    from xsource.cli import cockpit as cmod
+
+    request = _request_with_replies()
+    supplier = Supplier(id="s-1", name="Tree Co", email="quotes@example.com")
+    monkeypatch.setattr(
+        cmod,
+        "build_stores",
+        lambda cfg: (
+            _FakeSuppliers([supplier, Supplier(id="s-2", name="No Reply Co")]),
+            _FakeRequests(request),
+        ),
+    )
+    monkeypatch.setattr(cmod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
+
+    inputs = iter(["r-0042", "s-1"])
+    output = io.StringIO()
+    ctx = WizardContext(
+        state={},
+        client=None,
+        console=Console(file=output, force_terminal=False, color_system=None),
+        input_fn=lambda *a, **k: next(inputs),
+        confirm_fn=lambda _p: False,
+        read_key=lambda: "\x1b",
+    )
+
+    result = _followup_select_step(ctx, {})
+
+    assert result.ok, result.message
+    assert result.data["request"] is request
+    assert result.data["supplier"] is supplier
+    assert "Asked to visit before quoting." in output.getvalue()
+    assert "Thanks for getting back to us about tree chipping" in output.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # _followup_apply_step — decline path (no Google credentials needed)
 # ---------------------------------------------------------------------------
@@ -68,6 +164,49 @@ def test_followup_apply_step_decline_creates_no_draft():
     result = _followup_apply_step(ctx, {"request_id": "r-0042", "supplier_id": "s-1"})
     assert not result.ok
     assert "declined" in result.message.lower()
+
+
+def test_followup_cli_decline_creates_no_draft(monkeypatch):
+    import xsource.outreach.client as out_mod
+    import xsource.p4.followup as followup_mod
+    from xsource.cli import request as request_mod
+
+    request = _request_with_replies()
+    supplier = Supplier(id="s-1", name="Tree Co", email="quotes@example.com")
+    calls: list[dict] = []
+
+    monkeypatch.setattr(
+        request_mod,
+        "build_stores",
+        lambda cfg: (_FakeSuppliers([supplier]), _FakeRequests(request)),
+    )
+    monkeypatch.setattr(request_mod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
+    monkeypatch.setattr(
+        followup_mod,
+        "create_followup_draft",
+        lambda *a, **k: calls.append({"args": a, "kwargs": k}) or {"draft_id": "fd-1"},
+    )
+    monkeypatch.setattr(out_mod, "SafeOutreachClient", lambda svc: object())
+    monkeypatch.setenv("XSOURCE_GMAIL_TOKEN_PATH", "/nonexistent")
+
+    import importlib
+
+    google_oauth2 = importlib.import_module("google.oauth2.credentials")
+    monkeypatch.setattr(
+        google_oauth2.Credentials,
+        "from_authorized_user_file",
+        staticmethod(lambda path: None),
+    )
+
+    import googleapiclient.discovery as disco
+
+    monkeypatch.setattr(disco, "build", lambda *a, **k: object())
+
+    result = CliRunner().invoke(app, ["request", "followup", "r-0042", "s-1"], input="n\n")
+
+    assert result.exit_code == 0
+    assert calls == []
+    assert "declined" in result.stdout.lower()
 
 
 # ---------------------------------------------------------------------------

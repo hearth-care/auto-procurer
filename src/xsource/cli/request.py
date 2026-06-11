@@ -129,7 +129,7 @@ def followup(
     from googleapiclient.discovery import build
 
     from xsource.outreach.client import SafeOutreachClient
-    from xsource.p4.followup import create_followup_draft
+    from xsource.p4.followup import build_followup_draft, create_followup_draft
 
     cfg = Config.from_env()
     suppliers, requests_ = build_stores(cfg)
@@ -139,6 +139,22 @@ def followup(
     supplier = next((s for s in suppliers.all() if s.id == supplier_id), None)
     if supplier is None:
         raise typer.BadParameter(f"unknown supplier id {supplier_id}")
+    if not any(entry.supplier_id == supplier_id and entry.reply for entry in request.shortlist):
+        raise typer.BadParameter(
+            f"supplier {supplier_id} has no recorded reply on request {request_id}"
+        )
+
+    draft = build_followup_draft(
+        request,
+        supplier,
+        operator_name=cfg.operator_display_name,
+    )
+    typer.echo(f"To: {draft['to']}")
+    typer.echo(f"Subject: {draft['subject']}")
+    typer.echo(draft["body"])
+    if not typer.confirm("Create follow-up draft?", default=False):
+        typer.echo("Apply declined.")
+        return
 
     creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_GMAIL_TOKEN_PATH"])
     service = build("gmail", "v1", credentials=creds, cache_discovery=False)

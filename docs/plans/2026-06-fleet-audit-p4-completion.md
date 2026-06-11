@@ -246,8 +246,8 @@ New module `src/xsource/p4/reorder.py` + capability `request.reorder`:
 
 ## HANDOFF NOTES
 
-**Phase:** all 4 phases implemented and merged into this PR branch.
-**Implemented 2026-06-11 by builder-claude-20260611T200951Z-94309.**
+**Phase:** all 4 phases implemented; QA follow-up gate fixes in progress on this PR branch.
+**Current agent:** fixer-codex-20260611T215153Z-55255.
 
 ### What was built
 
@@ -259,7 +259,9 @@ New module `src/xsource/p4/reorder.py` + capability `request.reorder`:
   `_followup_select_step` + `_followup_apply_step` + `_request_followup_handler` in cockpit.py;
   `operator_name` parameter added to `create_followup_draft` (no more hardcoded "Milo");
   `Config.operator_display_name` from `XSOURCE_OPERATOR_DISPLAY_NAME` env var;
-  `tests/p4/test_followup_wiring.py`.
+  `tests/p4/test_followup_wiring.py`. QA follow-up fix: both CLI and cockpit now
+  preview the exact follow-up body before creating a Gmail draft; the cockpit lists only
+  replied shortlist entries; the CLI decline path exits without touching Gmail.
 
 - **Phase 3 (S7):** `src/xsource/p4/reorder.py` — `ReorderProposal` dataclass +
   `build_reorder_proposal` pure function; `tests/p4/test_reorder.py` (11 unit tests).
@@ -277,19 +279,22 @@ New module `src/xsource/p4/reorder.py` + capability `request.reorder`:
 
 ### Deviations from plan
 
-- `xsource request reorder <supplier-id>` currently opens the full cockpit (not
-  focus-navigated to the reorder capability). The framework's `run_cockpit` does not
-  currently accept a `focus` parameter for deep-linking into a specific capability.
-  The CLI exists so the `equivalent_cli` claim is honest; the operator navigates to
-  shelf A → reorder from there.
-
 - "Cockpit render/model parity suite extended to the new screens" — the new walk
   handlers do not add any bespoke `render_*` functions; they use framework-provided
   step rendering. The existing `test_render_model_parity` test passes vacuously
   (correct per the contract test's docstring: "Vacuously true for the scaffold").
 
-### Gates (all green on 2026-06-11)
+- Earlier handoff notes said `xsource request reorder <supplier-id>` did not focus the
+  reorder capability. That was fixed by the previous QA-fix commit on this branch:
+  `run_cockpit(focus=...)` now deep-links to `request.reorder:<supplier_id>`.
 
-- `uv run pytest -q` → 154 passed
-- `uv run ruff check .` → All checks passed
-- `uv run mypy` → Success: no issues found in 54 source files
+### Latest gates
+
+- `uv run pytest tests/p4/test_followup_wiring.py -q` -> 7 passed
+- `uv run pytest tests/p4 -q` -> 40 passed
+
+### Next concrete step
+
+- Commit and push this QA follow-up fix, then run full gates: `uv run pytest -q`,
+  `uv run ruff check .`, `uv run mypy`, and `pre-commit run --all-files` if a
+  `.pre-commit-config.yaml` exists.

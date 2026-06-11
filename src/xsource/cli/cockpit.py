@@ -469,13 +469,63 @@ _request_trigger_handler = make_walk_handler(
 
 def _followup_select_step(ctx: WizardContext, bag: dict) -> StepResult:
     """Select the request and supplier for a follow-up draft."""
+    from xsource.p4.followup import build_followup_draft
+
     request_id = ctx.input_fn("Request id: ").strip() if ctx.input_fn else ""
     if not request_id:
         return StepResult(ok=False, message="No request id entered.")
+
+    cfg = Config.from_env()
+    suppliers, requests_ = build_stores(cfg)
+    request = requests_.get(request_id)
+    if request is None:
+        return StepResult(ok=False, message=f"Unknown request {request_id}.")
+
+    suppliers_by_id = {supplier.id: supplier for supplier in suppliers.all()}
+    replied_entries = [
+        entry
+        for entry in request.shortlist
+        if entry.reply and entry.supplier_id in suppliers_by_id
+    ]
+    if not replied_entries:
+        return StepResult(ok=False, message=f"No replied shortlist entries for {request_id}.")
+
+    ctx.console.print("[bold]Replied shortlist entries[/bold]")
+    for entry in replied_entries:
+        supplier = suppliers_by_id[entry.supplier_id]
+        summary = entry.reply.get("summary") or "reply recorded"
+        ctx.console.print(f"  {entry.rank}. {supplier.id} — {supplier.name}: {summary}")
+
     supplier_id = ctx.input_fn("Supplier id: ").strip() if ctx.input_fn else ""
     if not supplier_id:
         return StepResult(ok=False, message="No supplier id entered.")
-    return StepResult(ok=True, data={"request_id": request_id, "supplier_id": supplier_id})
+    supplier = suppliers_by_id.get(supplier_id)
+    if supplier is None:
+        return StepResult(ok=False, message=f"Unknown supplier {supplier_id}.")
+    if not any(entry.supplier_id == supplier_id for entry in replied_entries):
+        return StepResult(
+            ok=False,
+            message=f"Supplier {supplier_id} has no recorded reply on {request_id}.",
+        )
+
+    draft = build_followup_draft(
+        request,
+        supplier,
+        operator_name=cfg.operator_display_name,
+    )
+    ctx.console.print("[bold]Draft preview[/bold]")
+    ctx.console.print(f"To: {draft['to']}")
+    ctx.console.print(f"Subject: {draft['subject']}")
+    ctx.console.print(draft["body"])
+    return StepResult(
+        ok=True,
+        data={
+            "request_id": request_id,
+            "supplier_id": supplier_id,
+            "request": request,
+            "supplier": supplier,
+        },
+    )
 
 
 def _followup_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
@@ -496,13 +546,19 @@ def _followup_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     from xsource.p4.followup import create_followup_draft
 
     cfg = Config.from_env()
-    suppliers, requests_ = build_stores(cfg)
-    request = requests_.get(bag["request_id"])
-    if request is None:
-        return StepResult(ok=False, message=f"Unknown request {bag['request_id']}.")
-    supplier = next((s for s in suppliers.all() if s.id == bag["supplier_id"]), None)
-    if supplier is None:
-        return StepResult(ok=False, message=f"Unknown supplier {bag['supplier_id']}.")
+    request = bag.get("request")
+    supplier = bag.get("supplier")
+    requests_ = None
+    if request is None or supplier is None:
+        suppliers, requests_ = build_stores(cfg)
+        request = requests_.get(bag["request_id"])
+        if request is None:
+            return StepResult(ok=False, message=f"Unknown request {bag['request_id']}.")
+        supplier = next((s for s in suppliers.all() if s.id == bag["supplier_id"]), None)
+        if supplier is None:
+            return StepResult(ok=False, message=f"Unknown supplier {bag['supplier_id']}.")
+    else:
+        _, requests_ = build_stores(cfg)
 
     creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_GMAIL_TOKEN_PATH"])
     service = build("gmail", "v1", credentials=creds, cache_discovery=False)
