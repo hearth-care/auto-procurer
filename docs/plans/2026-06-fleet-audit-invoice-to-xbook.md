@@ -262,7 +262,7 @@ can't drift silently.
 
 ## HANDOFF NOTES
 
-- Current phase: QA fix for variance signal path complete; rebasing onto latest `origin/main`.
+- Current phase: QA fix complete on latest `origin/main`; finish protocol.
 - Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
   `invoices.jsonl` `SyncedStore`, and focused tests.
 - Completed: Phase 2 capture/import/CLI/cockpit slice with price-history linkage,
@@ -297,6 +297,22 @@ can't drift silently.
 - Verification: `uv run mypy` returned `Success: no issues found in 57 source files`.
 - Verification: `pre-commit run --all-files` returned `InvalidConfigError:
   .pre-commit-config.yaml is not a file`.
+- Rebase note (2026-06-11): rebased onto latest `origin/main`; preserved mainline
+  request-sync `run_session`/heartbeat changes while keeping the PR's three-store
+  `(suppliers, requests, invoices)` wiring. Preserved mainline cockpit pending-reply/store
+  tests while keeping invoice capture/pill coverage.
+- Rebase drift fix: mainline added `Config.fleet_bucket` and `Config.state_prefix`; invoice
+  store wiring now uses `state_blob(cfg, "invoices.jsonl")`, and tests pass explicit
+  config values.
+- Verification: rebase-focused failures
+  `uv run pytest tests/store/test_remote.py::test_build_stores_includes_invoice_store tests/test_cockpit_render.py::test_capture_state_counts_invoices_needing_attention -q`
+  returned `2 passed in 0.06s`.
+- Verification: post-rebase full suite `uv run pytest -q` returned `195 passed in 3.74s`.
+- Verification: post-rebase `uv run ruff check .` returned `All checks passed!`.
+- Verification: post-rebase `uv run mypy` returned
+  `Success: no issues found in 59 source files`.
+- Verification: post-rebase `pre-commit run --all-files` returned `InvalidConfigError:
+  .pre-commit-config.yaml is not a file`.
 - Verification: post-QA-fix `uv run pytest -q` returned `178 passed in 21.98s`.
 - Verification: `uv run ruff check .` returned `All checks passed!`.
 - Verification: `uv run mypy` returned `Success: no issues found in 57 source files`.
@@ -316,4 +332,5 @@ can't drift silently.
 - Known-failing tests: none. Focused RED was
   `uv run pytest tests/test_signals_build.py::test_invoice_variance_signal_uses_captured_invoice_state -q`,
   which failed because `build_invoice_variance_signals` did not exist.
-- Next concrete step: rebase on latest `origin/main`, push with lease, then finish protocol.
+- Next concrete step: push with lease, mark ready, move label to `agent:needs-qa`, then
+  post completion comment.

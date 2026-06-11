@@ -37,7 +37,10 @@ def build_stores(cfg: Config) -> tuple[SyncedStore, SyncedStore, SyncedStore]:
         state_blob(cfg, "requests.jsonl"),
     )
     invoices = SyncedStore(
-        base, "invoices.jsonl", InvoiceRecord, make_blob(_BUCKET, "state/xsource/invoices.jsonl")
+        base,
+        "invoices.jsonl",
+        InvoiceRecord,
+        state_blob(cfg, "invoices.jsonl"),
     )
     return suppliers, requests_, invoices
 

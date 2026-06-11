@@ -224,6 +224,8 @@ def test_capture_state_counts_invoices_needing_attention(monkeypatch) -> None:
         staff_share_group=None,
         state_dir="/tmp/xsource-test",
         model_chain=["claude-sonnet-4-6"],
+        fleet_bucket=None,
+        state_prefix="state/xsource",
     )
     monkeypatch.setattr(
         cockpit,
