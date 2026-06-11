@@ -11,7 +11,9 @@ import typer
 
 from xsource.cli.cockpit import _AnthropicStructuredGateway
 from xsource.config import Config
+from xsource.obs import event as obs_event
 from xsource.sheet.client import SheetClient
+from xsource.store.remote import StoreOffline
 from xsource.watcher.daemon import process_once
 from xsource.watcher.gmail import GmailWatcherClient
 from xsource.watcher.loop import run_loop
@@ -46,8 +48,7 @@ def _sheet_client() -> SheetClient:
     return SheetClient(creds)
 
 
-def _process_factory():
-    cfg = Config.from_env()
+def _process_factory(cfg: Config):
     suppliers, requests = build_stores(cfg)
     own_addresses = {
         item.strip().lower()
@@ -60,6 +61,15 @@ def _process_factory():
     gateway = _LazyStructuredGateway()
 
     def _run_once():
+        # Fail fast when the store is offline — no point processing messages we
+        # cannot persist.  This also counts toward the circuit breaker.
+        if suppliers.offline or requests.offline:
+            obs_event(
+                "watcher.store_offline",
+                severity="error",
+                detail="store offline at cycle start; skipping message processing",
+            )
+            raise StoreOffline("store is offline — skipping watcher cycle")
         return process_once(
             requests=requests,
             suppliers=suppliers,
@@ -73,10 +83,24 @@ def _process_factory():
     return _run_once
 
 
+def _on_breaker_open(consecutive_failures: int) -> None:
+    obs_event(
+        "watcher.circuit_breaker_open",
+        severity="error",
+        consecutive_failures=consecutive_failures,
+        detail=f"watcher circuit breaker opened after {consecutive_failures} consecutive failures",
+    )
+    typer.echo(
+        f"FATAL: watcher circuit breaker opened after {consecutive_failures} consecutive"
+        " failures — exiting so the supervisor can restart.",
+        err=True,
+    )
+
+
 @watcher_app.command("run")
 def run(once: bool = typer.Option(False, "--once", help="Run a single watcher cycle.")) -> None:
     cfg = Config.from_env()
-    process = _process_factory()
+    process = _process_factory(cfg)
     if once:
         typer.echo(process())
         return
@@ -84,6 +108,9 @@ def run(once: bool = typer.Option(False, "--once", help="Run a single watcher cy
         process,
         poll_seconds=cfg.poll_seconds,
         on_error=lambda exc: typer.echo(f"watcher cycle failed: {exc}", err=True),
+        max_backoff_seconds=cfg.max_backoff_seconds,
+        breaker_threshold=cfg.breaker_threshold,
+        on_breaker_open=_on_breaker_open,
     )
 
 
