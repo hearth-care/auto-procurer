@@ -1,0 +1,6 @@
+from typing import Any, Callable, Sequence
+from datetime import date, datetime
+from clonway_cockpit.signals.model import Signal
+
+def scan_horizon(fn: Callable[..., Sequence[Signal]]) -> Callable[..., Sequence[Signal]]: ...
+def compose_horizon(fn: Callable[..., Sequence[Signal]]) -> Callable[..., tuple[Signal, ...]]: ...

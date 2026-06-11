@@ -59,7 +59,14 @@ ignore = [
 [tool.mypy]
 python_version = "3.12"
 files = ["src/xsource"]
-ignore_missing_imports = true
 check_untyped_defs = true
 warn_redundant_casts = true
 no_implicit_optional = true
+mypy_path = ["stubs"]
+
+# Per-module overrides for genuinely untyped third-party packages.
+# clonway_cockpit is covered by the local stubs/ package above.
+
+[[tool.mypy.overrides]]
+module = ["googleapiclient.*", "google.cloud.*", "google.oauth2.*"]
+ignore_missing_imports = true
