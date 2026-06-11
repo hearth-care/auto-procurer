@@ -60,13 +60,18 @@ def bootout(*, dry_run: bool) -> None:
 
 def bootstrap(source: pathlib.Path, *, dry_run: bool) -> None:
     for label in LABELS:
-        run(["launchctl", "bootstrap", f"gui/{uid()}", str(source / f"{label}.plist")], dry_run=dry_run)
+        run(
+            ["launchctl", "bootstrap", f"gui/{uid()}", str(source / f"{label}.plist")],
+            dry_run=dry_run,
+        )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["archive", "bootout", "rollback"])
-    parser.add_argument("--archive-dir", nargs="?", help="Archive directory; prompts default if omitted.")
+    parser.add_argument(
+        "--archive-dir", nargs="?", help="Archive directory; prompts default if omitted."
+    )
     parser.add_argument("--apply", action="store_true", help="Run commands after printing them.")
     args = parser.parse_args()
 

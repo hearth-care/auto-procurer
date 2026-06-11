@@ -10,7 +10,9 @@ from xsource.store.files import SyncedFile
 
 
 class Budget:
-    def __init__(self, state_dir: Path, monthly_cap_gbp: float, month: str, blob: Any | None = None):
+    def __init__(
+        self, state_dir: Path, monthly_cap_gbp: float, month: str, blob: Any | None = None
+    ):
         self.cap = monthly_cap_gbp
         self.path = Path(state_dir) / f"budget-{month}.json"
         self._synced = SyncedFile(self.path, blob=blob)

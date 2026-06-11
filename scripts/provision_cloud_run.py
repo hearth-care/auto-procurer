@@ -105,7 +105,9 @@ def main() -> None:
     project = _prompt(args.project, "GCP project id")
     region = _prompt(args.region, "Cloud Run region")
     service_account = _prompt(args.service_account, "Runtime service account email")
-    commands = create_secret_commands(project=project, region=region, service_account=service_account)
+    commands = create_secret_commands(
+        project=project, region=region, service_account=service_account
+    )
 
     if args.apply:
         confirm = input("Apply these prod-mutating commands? Type APPLY: ").strip()

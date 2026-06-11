@@ -226,7 +226,7 @@ plists — the GCS-synced stores mean state follows whichever runner is active.
       skipped/failed execution is distinguishable from a quiet one.
 - [ ] OPERATOR TODO: launchd jobs unloaded and archived; documented rollback re-establishes
       local operation in under 15 minutes.
-- [ ] FINAL GATE TODO: No behavioural change to procurement logic; full test suite green; the
+- [x] No behavioural change to procurement logic; full test suite green; the
       draft-only/never-send posture untouched.
 
 ## Risks & dependencies
@@ -267,8 +267,8 @@ plists — the GCS-synced stores mean state follows whichever runner is active.
 ## HANDOFF NOTES
 
 - Agent: builder-codex-20260611T200954Z-94309.
-- Current phase: final gates next. Phase 1, Phase 2, Phase 3, and repo-owned Phase 4 artefacts are implemented in this PR branch.
+- Current phase: finish protocol next. Phase 1, Phase 2, Phase 3, and repo-owned Phase 4 artefacts are implemented in this PR branch.
 - Decisions taken: watcher uses scheduled Cloud Run job with `xsource watcher run --cycles 4 --interval 60`; deploy workflow creates schedulers paused and reads concrete fleet values from repo environment variables/secrets, not checked-in docs. `XSOURCE_RUNTIME_ENV=cloud_run` enables the shared Cloud Logging mirror; signal GCS project now defaults to ADC unless `XSOURCE_GCP_PROJECT` is set for local/legacy use. State blobs use `XSOURCE_FLEET_BUCKET` and `XSOURCE_STATE_PREFIX`; absent bucket keeps local/dev offline instead of committing concrete fleet identifiers.
 - Operator-only follow-up: manual Cloud Run credential-read smoke still needs real mounted secret values; live scheduler enablement, watcher cutover, `launchctl bootout`, one-week soak, and credential rotation remain operator steps documented in `docs/runbooks/cloud-run-cutover.md`.
-- Verification so far: `uv run pytest tests/deploy/test_cloud_run_phase1.py -q` -> 3 passed; `uv run pytest tests/test_runtime_env.py tests/deploy/test_cloud_run_phase2.py -q` -> 4 passed; `uv run pytest tests/test_config.py::test_fleet_state_config_comes_from_env tests/store/test_blob_file.py tests/test_budget.py::test_budget_can_sync_ledger_blob tests/watcher/test_cli_run.py tests/test_heartbeats.py -q` -> 6 passed; `uv run pytest tests/deploy/test_cloud_run_phase4.py -q` -> 3 passed; targeted ruff checks -> All checks passed; `uv run mypy src` -> Success.
+- Verification so far: `uv run pytest -q` -> 141 passed; `uv run ruff check .` -> All checks passed; `uv run ruff format --check .` -> 117 files already formatted; `uv run mypy src` -> Success; `docker build -t xsource-cloud-run-smoke .` -> built successfully; `docker run --rm xsource-cloud-run-smoke xsource --help` -> exit 0; `pre-commit run --all-files` -> not runnable because `.pre-commit-config.yaml` is not present in this repo.
 - Known failing tests: none from the current targeted slice.

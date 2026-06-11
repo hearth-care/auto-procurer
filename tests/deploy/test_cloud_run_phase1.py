@@ -7,6 +7,7 @@ def test_container_files_define_uv_entrypoint() -> None:
     dockerfile = Path("Dockerfile").read_text()
     dockerignore = Path(".dockerignore").read_text().splitlines()
 
+    assert "apt-get install -y --no-install-recommends git" in dockerfile
     assert "uv sync --frozen --no-dev" in dockerfile
     assert 'CMD ["xsource", "--help"]' in dockerfile
     assert ".venv" in dockerignore

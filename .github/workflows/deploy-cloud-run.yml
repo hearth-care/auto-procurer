@@ -42,6 +42,7 @@ jobs:
       XSOURCE_SCHEDULER_TIME_ZONE: ${{ vars.XSOURCE_SCHEDULER_TIME_ZONE || 'Europe/London' }}
       XSOURCE_RUNTIME_ENV: cloud_run
       XSOURCE_EMIT_SIGNALS: "1"
+      XSOURCE_OWN_EMAILS: ${{ vars.XSOURCE_OWN_EMAILS }}
     steps:
       - uses: actions/checkout@v6
 
@@ -100,7 +101,7 @@ jobs:
               --region "${XSOURCE_CLOUD_RUN_REGION}" \
               --image "${XSOURCE_IMAGE}" \
               --service-account "${XSOURCE_RUNTIME_SERVICE_ACCOUNT}" \
-              --set-env-vars "XSOURCE_RUNTIME_ENV=${XSOURCE_RUNTIME_ENV},XSOURCE_EMIT_SIGNALS=${XSOURCE_EMIT_SIGNALS},XSOURCE_FLEET_BUCKET=${XSOURCE_FLEET_BUCKET},XSOURCE_STATE_PREFIX=${XSOURCE_STATE_PREFIX},XSOURCE_GMAIL_TOKEN_PATH=/secrets/gmail/token.json,XSOURCE_SHEETS_TOKEN_PATH=/secrets/sheets/token.json,ANTHROPIC_API_KEY_FILE=/secrets/anthropic/api-key,GOOGLE_MAPS_API_KEY_FILE=/secrets/google-maps/api-key,COMPANIES_HOUSE_API_KEY_FILE=/secrets/companies-house/api-key" \
+              --set-env-vars "XSOURCE_RUNTIME_ENV=${XSOURCE_RUNTIME_ENV},XSOURCE_EMIT_SIGNALS=${XSOURCE_EMIT_SIGNALS},XSOURCE_OWN_EMAILS=${XSOURCE_OWN_EMAILS},XSOURCE_FLEET_BUCKET=${XSOURCE_FLEET_BUCKET},XSOURCE_STATE_PREFIX=${XSOURCE_STATE_PREFIX},XSOURCE_GMAIL_TOKEN_PATH=/secrets/gmail/token.json,XSOURCE_SHEETS_TOKEN_PATH=/secrets/sheets/token.json,ANTHROPIC_API_KEY_FILE=/secrets/anthropic/api-key,GOOGLE_MAPS_API_KEY_FILE=/secrets/google-maps/api-key,COMPANIES_HOUSE_API_KEY_FILE=/secrets/companies-house/api-key" \
               --set-secrets "/secrets/gmail/token.json=${XSOURCE_GMAIL_TOKEN_SECRET}:latest,/secrets/sheets/token.json=${XSOURCE_SHEETS_TOKEN_SECRET}:latest,/secrets/anthropic/api-key=${XSOURCE_ANTHROPIC_API_KEY_SECRET}:latest,/secrets/google-maps/api-key=${XSOURCE_GOOGLE_MAPS_API_KEY_SECRET}:latest,/secrets/companies-house/api-key=${XSOURCE_COMPANIES_HOUSE_API_KEY_SECRET}:latest" \
               -- "$@"
           }

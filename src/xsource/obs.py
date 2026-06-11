@@ -9,8 +9,7 @@ worker is byte-identical on the xops dashboard.
 * ``event(name, severity=…, **fields)`` — emit one structured event. Always
   fires a local stdlib log line; buffered into the active run's JSONL flush.
 * ``run_session(trigger=…, args=…)`` — wraps a run: ``run.started`` … yield …
-  ``run.finished`` + a JSONL flush to
-  ``gs://clonway-orchestrator-eu-west2/logs/xsource/<date>/<run_id>.jsonl``.
+  ``run.finished`` + a JSONL flush to the fleet logs bucket.
 
 Both degrade silently with no creds (local/dev) — observability never breaks a
 worker run.
