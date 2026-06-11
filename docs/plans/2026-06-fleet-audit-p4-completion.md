@@ -246,7 +246,7 @@ New module `src/xsource/p4/reorder.py` + capability `request.reorder`:
 
 ## HANDOFF NOTES
 
-**Phase:** all 4 phases implemented; QA follow-up gate fixes in progress on this PR branch.
+**Phase:** all 4 phases implemented; QA follow-up gate fixes complete on this PR branch.
 **Current agent:** fixer-codex-20260611T215153Z-55255.
 
 ### What was built
@@ -292,9 +292,12 @@ New module `src/xsource/p4/reorder.py` + capability `request.reorder`:
 
 - `uv run pytest tests/p4/test_followup_wiring.py -q` -> 7 passed
 - `uv run pytest tests/p4 -q` -> 40 passed
+- `uv run pytest -q` -> 202 passed
+- `uv run ruff check .` -> All checks passed
+- `uv run mypy` -> Success: no issues found in 56 source files
+- `pre-commit run --all-files` -> skipped because `.pre-commit-config.yaml` is not a file
 
 ### Next concrete step
 
-- Commit and push this QA follow-up fix, then run full gates: `uv run pytest -q`,
-  `uv run ruff check .`, `uv run mypy`, and `pre-commit run --all-files` if a
-  `.pre-commit-config.yaml` exists.
+- Mark the PR ready, move the label from `agent:claimed` to `agent:needs-qa`, post the
+  completion comment with the gate evidence, and remove the worktree.
