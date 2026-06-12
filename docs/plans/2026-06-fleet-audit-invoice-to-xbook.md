@@ -459,4 +459,23 @@ can't drift silently.
 - Verification: `uv run pytest -q` → 278 passed in 7.65s.
 - Verification: `uv run ruff check .` → All checks passed!
 - Verification: `uv run mypy` → Success: no issues found in 60 source files.
-- Status: All phases complete, all gates green, finish protocol complete.
+- CI fix (fixer-codex-20260612T231012Z-4067): CI failed the `Lint (ruff + mypy)` job on
+  the `uv run ruff format --check .` step, although local `ruff check` and `mypy` passed.
+  Reproduced locally: the formatter reported `src/xsource/invoices/__init__.py`,
+  `tests/cli/test_runtime_commands.py`, `tests/walks/test_invoice_capture_walk.py`, and
+  `tests/walks/test_request_new.py` would be reformatted. Applied only `ruff format`'s
+  mechanical changes to those files.
+- Verification: `uv run ruff format --check .` → `149 files already formatted`.
+- Verification: `uv run ruff check .` → `All checks passed!`.
+- Verification: `uv run mypy` → `Success: no issues found in 60 source files`.
+- Verification: `uv run pytest -q` → `278 passed in 7.66s`.
+- Verification: `pre-commit run --all-files` → `InvalidConfigError:
+  .pre-commit-config.yaml is not a file` (expected for this repo; no config exists).
+- Rebase check: `git fetch origin && git rebase origin/main` → `Current branch
+  claude/plan-invoice-to-xbook is up to date.`
+- Post-rebase verification: `uv run ruff format --check .` → `149 files already formatted`;
+  `uv run ruff check .` → `All checks passed!`; `uv run mypy` → `Success: no issues found
+  in 60 source files`; `uv run pytest -q` → `278 passed in 4.60s`.
+- Current phase: CI-fail format fix complete; next concrete step is force-with-lease push,
+  then finish protocol.
+- Known-failing tests: none.

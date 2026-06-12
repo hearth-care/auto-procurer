@@ -113,7 +113,7 @@ def test_cockpit_steps_call_triage_and_research_pipeline(monkeypatch):
             indicative=None,
             stages={},
             caps=kwargs["caps"],
-    )
+        )
 
     monkeypatch.setattr(cockpit, "run_triage", fake_run_triage)
     monkeypatch.setattr(cockpit, "_AnthropicStructuredGateway", lambda chain=None: object())

@@ -85,9 +85,7 @@ def test_invoice_add_reports_invalid_date_without_traceback(monkeypatch, tmp_pat
     suppliers, requests, invoices = _invoice_stores(tmp_path)
     suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))
     monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
-    monkeypatch.setattr(
-        invoice_mod, "build_stores", lambda cfg: (suppliers, requests, invoices)
-    )
+    monkeypatch.setattr(invoice_mod, "build_stores", lambda cfg: (suppliers, requests, invoices))
 
     result = runner.invoke(
         app,
@@ -132,9 +130,7 @@ def test_invoice_reemit_reports_invalid_date_without_traceback(monkeypatch, tmp_
         )
     )
     monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
-    monkeypatch.setattr(
-        invoice_mod, "build_stores", lambda cfg: (suppliers, requests, invoices)
-    )
+    monkeypatch.setattr(invoice_mod, "build_stores", lambda cfg: (suppliers, requests, invoices))
 
     result = runner.invoke(
         app,

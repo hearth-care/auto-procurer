@@ -72,9 +72,7 @@ def test_invoice_apply_step_reports_invalid_date_without_raising(monkeypatch, tm
     invoices = JsonlStore(tmp_path / "invoices.jsonl", InvoiceRecord)
     suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))
     monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
-    monkeypatch.setattr(
-        cockpit_mod, "build_stores", lambda cfg: (suppliers, requests, invoices)
-    )
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (suppliers, requests, invoices))
     monkeypatch.setattr(cockpit_mod, "confirm_apply", lambda *args, **kwargs: True)
 
     result = _invoice_apply_step(
