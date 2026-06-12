@@ -216,6 +216,93 @@ def test_read_ack_jsonl_continues_past_malformed_lines(tmp_path):
     assert invoices.get(second_report.invoice_id).status == "acknowledged"
 
 
+def test_malformed_timestamp_is_skipped_invoice_not_transitioned(tmp_path):
+    """A malformed ack timestamp must not transition the invoice or corrupt updated_at."""
+    _, _, invoices, invoice_id = _capture_one(tmp_path)
+    original_updated_at = invoices.get(invoice_id).updated_at
+
+    report = ingest_ack_records(
+        invoices,
+        [
+            {
+                "invoice_id": invoice_id,
+                "consumer_run_id": "xbook-run-bad",
+                "disposition": "accepted",
+                "timestamp": "not-a-date",
+                "contract_version": 1,
+            }
+        ],
+    )
+
+    invoice = invoices.get(invoice_id)
+    assert report == {"acknowledged": 0, "rejected": 0, "skipped": 1}
+    assert invoice.status == "captured"
+    assert invoice.updated_at == original_updated_at
+
+
+def test_missing_timestamp_is_skipped(tmp_path):
+    """An ack row with no timestamp field must be skipped without transitioning the invoice."""
+    _, _, invoices, invoice_id = _capture_one(tmp_path)
+
+    report = ingest_ack_records(
+        invoices,
+        [
+            {
+                "invoice_id": invoice_id,
+                "consumer_run_id": "xbook-run-no-ts",
+                "disposition": "accepted",
+                "contract_version": 1,
+            }
+        ],
+    )
+
+    assert report == {"acknowledged": 0, "rejected": 0, "skipped": 1}
+    assert invoices.get(invoice_id).status == "captured"
+
+
+def test_malformed_timestamp_does_not_block_later_valid_row(tmp_path):
+    """One bad timestamp row must not stop later valid ack rows from being processed."""
+    suppliers, requests, invoices, first_id = _capture_one(tmp_path)
+    second_report = capture_invoice(
+        suppliers=suppliers,
+        requests=requests,
+        invoices=invoices,
+        request_id="",
+        supplier_id="s-0001",
+        amount_minor=8000,
+        invoice_number="INV-102",
+        invoice_date="2026-06-11",
+        due_date="2026-06-30",
+        description="Second job",
+        source="manual",
+        now="2026-06-11T13:00:00+00:00",
+    )
+
+    report = ingest_ack_records(
+        invoices,
+        [
+            {
+                "invoice_id": first_id,
+                "consumer_run_id": "xbook-run-bad",
+                "disposition": "accepted",
+                "timestamp": "not-a-date",
+                "contract_version": 1,
+            },
+            {
+                "invoice_id": second_report.invoice_id,
+                "consumer_run_id": "xbook-run-good",
+                "disposition": "accepted",
+                "timestamp": "2026-06-11T16:00:00+00:00",
+                "contract_version": 1,
+            },
+        ],
+    )
+
+    assert report == {"acknowledged": 1, "rejected": 0, "skipped": 1}
+    assert invoices.get(first_id).status == "captured"
+    assert invoices.get(second_report.invoice_id).status == "acknowledged"
+
+
 def test_ingest_ack_also_works_from_emitted_state(tmp_path):
     """Re-emitted and emitted invoices should still be ack-able (regression guard)."""
     _, _, invoices, invoice_id = _capture_one(tmp_path)

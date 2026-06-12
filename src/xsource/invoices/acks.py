@@ -44,6 +44,19 @@ def _is_supported_version(raw: Any) -> bool:
         return False
 
 
+def _parse_iso_timestamp(raw: Any) -> str | None:
+    """Validate and return an ISO timestamp string; None if missing or malformed."""
+    if not raw:
+        return None
+    try:
+        from datetime import datetime
+
+        datetime.fromisoformat(str(raw))
+        return str(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def ingest_ack_records(invoices, records: list[dict[str, Any]]) -> dict[str, int]:
     report = {"acknowledged": 0, "rejected": 0, "skipped": 0}
     for record in records:
@@ -54,8 +67,11 @@ def ingest_ack_records(invoices, records: list[dict[str, Any]]) -> dict[str, int
         if invoice is None:
             report["skipped"] += 1
             continue
+        timestamp = _parse_iso_timestamp(record.get("timestamp"))
+        if timestamp is None:
+            report["skipped"] += 1
+            continue
         disposition = str(record.get("disposition") or "")
-        timestamp = str(record.get("timestamp") or "")
         try:
             # A received ack proves the signal reached the consumer; advance captured→emitted.
             if invoice.status == "captured":

@@ -444,6 +444,19 @@ can't drift silently.
   from the cockpit journey map phase), the shelf B index in that test was off by one: this PR
   added `invoice.capture` as the first shelf-B item, shifting `request.list` to item 2 and
   `request.sync` to item 3. Fixed the test to navigate to item 3.
-- Final gate results: `uv run pytest -q` → 275 passed; `uv run ruff check .` → All checks
-  passed!; `uv run mypy` → Success: no issues found in 60 source files.
+- Final gate results (builder-claude-20260612T214526Z): `uv run pytest -q` → 275 passed;
+  `uv run ruff check .` → All checks passed!; `uv run mypy` → Success: no issues found in
+  60 source files.
+- QA fix (fixer-claude-20260612T225330Z-4067): Addressed the single HIGH finding from
+  qa-claude-20260612T224815Z-88327: malformed ack `timestamp` was accepted and could corrupt
+  `updated_at` / silently flip invoice to `acknowledged`. Added `_parse_iso_timestamp` helper in
+  `acks.py` that validates with `datetime.fromisoformat`, returning `None` on missing/malformed
+  values; `ingest_ack_records` now skips any row where `timestamp` does not parse rather than
+  passing the raw string into `transition_to`. Added 3 regression tests: malformed timestamp is
+  skipped and invoice stays `captured` with original `updated_at`; missing timestamp field is
+  skipped; bad-timestamp row does not block later valid ack rows.
+- Verification: `uv run pytest tests/invoices/test_acks.py -v` → 10 passed in 0.04s.
+- Verification: `uv run pytest -q` → 278 passed in 7.65s.
+- Verification: `uv run ruff check .` → All checks passed!
+- Verification: `uv run mypy` → Success: no issues found in 60 source files.
 - Status: All phases complete, all gates green, finish protocol complete.
