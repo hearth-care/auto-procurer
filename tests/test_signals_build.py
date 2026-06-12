@@ -1,14 +1,9 @@
-"""AC-C6-3 — the mandatory ``@scan_horizon`` contract.
+"""AC-C6-3 — the ``@scan_horizon`` contract and the four horizon builders.
 
-A generated worker can't exist without a horizon scan: ``scan_xsource_horizon``
-is a real, ``@scan_horizon``-tagged function, and ``build_xsource_signals``
-is the composed ``(*, today, now) -> Sequence[Signal]`` callable ``emit_signals``
-consumes.
-
-The LAST test (``test_horizon_is_not_empty``) is the proactive-by-construction
-gate: it ``xfail``s while the stub returns ``()`` and will PASS — flipping to an
-unexpected pass — the moment you fill in real signals, prompting you to remove
-the ``xfail`` marker. Until then the empty horizon is *visible*, not silent.
+``scan_xsource_horizon`` is a real, ``@scan_horizon``-tagged function composed
+from four builders: chase-quote, recurring-service, watcher-health, and
+store-offline. ``build_xsource_signals`` is the composed
+``(*, today, now) -> Sequence[Signal]`` callable that ``emit_signals`` consumes.
 """
 
 from __future__ import annotations
