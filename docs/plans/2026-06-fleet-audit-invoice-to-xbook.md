@@ -439,5 +439,11 @@ can't drift silently.
   .pre-commit-config.yaml is not a file` (expected for this repo; no config exists).
 - Rebase check: `git fetch origin` then `git rebase origin/main` returned
   `Current branch claude/plan-invoice-to-xbook is up to date.`
-- Next concrete step: push final handoff note, mark ready, move label to
-  `agent:needs-qa`, post DONE.
+- Post-rebase fix (builder-claude-20260612T214526Z-42500): After rebasing onto origin/main
+  (which added `test_request_sync_card_summary_via_drive` in `tests/test_cockpit_placeholders.py`
+  from the cockpit journey map phase), the shelf B index in that test was off by one: this PR
+  added `invoice.capture` as the first shelf-B item, shifting `request.list` to item 2 and
+  `request.sync` to item 3. Fixed the test to navigate to item 3.
+- Final gate results: `uv run pytest -q` → 275 passed; `uv run ruff check .` → All checks
+  passed!; `uv run mypy` → Success: no issues found in 60 source files.
+- Status: All phases complete, all gates green, finish protocol complete.
