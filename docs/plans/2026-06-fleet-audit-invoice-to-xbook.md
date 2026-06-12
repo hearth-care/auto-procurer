@@ -344,5 +344,19 @@ can't drift silently.
 - Verification: `uv run pytest -q` returned `200 passed in 6.67s`.
 - Verification: `uv run ruff check .` returned `All checks passed!`.
 - Verification: `uv run mypy` returned `Success: no issues found in 59 source files`.
+- QA fix (fixer-claude-20260612T060714Z-7032): Fixed non-positive amount bypass (Finding 1):
+  `capture_invoice` now raises `ValueError` for `amount_minor <= 0` before any store write,
+  centralising the guard so CLI, cockpit, and CSV import all share the same invariant.
+  The cockpit `_invoice_details_step` now validates `int(amount_text)` with try/except and
+  a `<= 0` check, returning a clean `StepResult(ok=False)` instead of raising uncaught
+  `ValueError`. Fixed blank invoice_number CSV idempotency bug (Finding 2): `import_csv` now
+  errors rows with a blank `invoice_number` instead of importing them without an idempotency
+  key, which previously created duplicate invoices on every rerun. Added 7 regression tests:
+  `capture_invoice` rejects zero/negative amounts (no persist); blank invoice_number in CSV
+  errors (no persist, two reruns produce two errored counts, no duplicate); cockpit step returns
+  clean `StepResult` for non-numeric, zero, and negative amounts, and accepts valid amount.
+- Verification: `uv run pytest -q` returned `207 passed in 5.86s`.
+- Verification: `uv run ruff check .` returned `All checks passed!`.
+- Verification: `uv run mypy` returned `Success: no issues found in 59 source files`.
 - Next concrete step: push with lease, mark ready, move label to `agent:needs-qa`, then
   post completion comment.

@@ -82,6 +82,8 @@ def capture_invoice(
     _validate_iso_date(invoice_date, "invoice_date")
     if due_date:
         _validate_iso_date(due_date, "due_date")
+    if amount_minor <= 0:
+        raise ValueError(f"amount_minor must be a positive integer, got {amount_minor}")
     now = now or dt.datetime.now(dt.UTC).isoformat()
     warnings: list[str] = []
     supplier = suppliers.get(supplier_id)
@@ -167,7 +169,10 @@ def import_csv(path: Path, *, suppliers, requests, invoices) -> dict[str, int]:
         for row in csv.DictReader(f):
             supplier_id = (row.get("supplier_id") or "").strip()
             invoice_number = (row.get("invoice_number") or "").strip() or None
-            if invoice_number and (supplier_id, invoice_number) in existing:
+            if not invoice_number:
+                errored += 1
+                continue
+            if (supplier_id, invoice_number) in existing:
                 skipped += 1
                 continue
             raw_amount = (row.get("amount_minor") or "").strip()
@@ -196,7 +201,6 @@ def import_csv(path: Path, *, suppliers, requests, invoices) -> dict[str, int]:
             except ValueError:
                 errored += 1
                 continue
-            if invoice_number:
-                existing.add((supplier_id, invoice_number))
+            existing.add((supplier_id, invoice_number))
             imported += 1
     return {"imported": imported, "skipped": skipped, "errored": errored}

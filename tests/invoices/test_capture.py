@@ -260,6 +260,71 @@ def test_import_csv_zero_amount_does_not_persist_invoice(tmp_path):
     assert len(invoices.all()) == 0
 
 
+def test_capture_rejects_zero_amount(tmp_path):
+    suppliers, requests, invoices = _stores(tmp_path)
+    suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))
+
+    import pytest
+
+    with pytest.raises(ValueError, match="amount_minor"):
+        capture_invoice(
+            suppliers=suppliers,
+            requests=requests,
+            invoices=invoices,
+            request_id="",
+            supplier_id="s-0001",
+            amount_minor=0,
+            invoice_number="INV-ZERO",
+            invoice_date="2026-06-11",
+            due_date=None,
+            description="Zero amount",
+            source="manual",
+        )
+
+    assert len(invoices.all()) == 0
+
+
+def test_capture_rejects_negative_amount(tmp_path):
+    suppliers, requests, invoices = _stores(tmp_path)
+    suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))
+
+    import pytest
+
+    with pytest.raises(ValueError, match="amount_minor"):
+        capture_invoice(
+            suppliers=suppliers,
+            requests=requests,
+            invoices=invoices,
+            request_id="",
+            supplier_id="s-0001",
+            amount_minor=-1000,
+            invoice_number="INV-NEG",
+            invoice_date="2026-06-11",
+            due_date=None,
+            description="Negative amount",
+            source="manual",
+        )
+
+    assert len(invoices.all()) == 0
+
+
+def test_import_csv_blank_invoice_number_does_not_persist_invoice(tmp_path):
+    suppliers, requests, invoices = _stores(tmp_path)
+    suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))
+    csv_path = tmp_path / "invoices.csv"
+    csv_path.write_text(
+        "supplier_id,invoice_number,amount_minor,invoice_date,due_date,description,request_id\n"
+        "s-0001,,12500,2026-06-11,2026-06-30,No invoice number,\n"
+    )
+
+    first = import_csv(csv_path, suppliers=suppliers, requests=requests, invoices=invoices)
+    second = import_csv(csv_path, suppliers=suppliers, requests=requests, invoices=invoices)
+
+    assert first == {"imported": 0, "skipped": 0, "errored": 1}
+    assert second == {"imported": 0, "skipped": 0, "errored": 1}
+    assert len(invoices.all()) == 0
+
+
 def test_import_csv_malformed_date_does_not_persist_invoice(tmp_path):
     suppliers, requests, invoices = _stores(tmp_path)
     suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))

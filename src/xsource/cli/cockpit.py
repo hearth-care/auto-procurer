@@ -582,11 +582,23 @@ def _invoice_details_step(ctx: WizardContext, bag: dict) -> StepResult:
     description = input_fn("Description: ").strip()
     if not supplier_id or not amount_text or not invoice_date or not description:
         return StepResult(ok=False, message="Missing invoice details.")
+    try:
+        amount_minor = int(amount_text)
+    except ValueError:
+        return StepResult(
+            ok=False,
+            message=f"Invalid amount {amount_text!r}: expected a whole number in minor units.",
+        )
+    if amount_minor <= 0:
+        return StepResult(
+            ok=False,
+            message=f"Amount must be a positive integer in minor units, got {amount_minor}.",
+        )
     return StepResult(
         ok=True,
         data={
             "supplier_id": supplier_id,
-            "amount_minor": int(amount_text),
+            "amount_minor": amount_minor,
             "invoice_date": invoice_date,
             "description": description,
             "request_id": input_fn("Request id (optional): ").strip(),
