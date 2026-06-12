@@ -332,7 +332,9 @@ def test_reorder_proposal_step_includes_budget_hint_in_constraints(monkeypatch):
         def all(self):
             return []
 
-    monkeypatch.setattr(cmod, "build_stores", lambda cfg: (_FakeSuppliers(), _FakeRequests()))
+    monkeypatch.setattr(
+        cmod, "build_stores", lambda cfg: (_FakeSuppliers(), _FakeRequests(), _FakeRequests())
+    )
     monkeypatch.setattr(cmod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
 
     ctx = WizardContext(

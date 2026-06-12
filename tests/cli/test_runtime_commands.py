@@ -51,7 +51,9 @@ def test_reorder_rejects_unknown_supplier(monkeypatch, tmp_path):
             return []
 
     monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
-    monkeypatch.setattr(req_mod, "build_stores", lambda cfg: (_EmptySuppliers(), _EmptyRequests()))
+    monkeypatch.setattr(
+        req_mod, "build_stores", lambda cfg: (_EmptySuppliers(), _EmptyRequests(), _EmptyRequests())
+    )
 
     result = runner.invoke(app, ["request", "reorder", "definitely-not-a-supplier"])
 

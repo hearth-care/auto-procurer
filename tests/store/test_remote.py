@@ -54,6 +54,7 @@ def test_build_stores_includes_invoice_store(tmp_path, monkeypatch):
         model_chain=["claude-sonnet-4-6"],
         fleet_bucket="fleet-state",
         state_prefix="state/xsource",
+        operator_display_name="Test Operator",
     )
     suppliers, requests, invoices = build_stores(cfg)
 

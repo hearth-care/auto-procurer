@@ -126,7 +126,7 @@ def followup(
     from xsource.cli.cockpit import run_cockpit
 
     cfg = Config.from_env()
-    suppliers, requests_ = build_stores(cfg)
+    suppliers, requests_, _invoices = build_stores(cfg)
     request = requests_.get(request_id)
     if request is None:
         raise typer.BadParameter(f"unknown request id {request_id}")
@@ -147,7 +147,7 @@ def reorder(supplier_id: str) -> None:
     from xsource.cli.cockpit import run_cockpit
 
     cfg = Config.from_env()
-    suppliers, _ = build_stores(cfg)
+    suppliers, _requests, _invoices = build_stores(cfg)
     supplier = next((s for s in suppliers.all() if s.id == supplier_id), None)
     if supplier is None:
         raise typer.BadParameter(f"unknown supplier id {supplier_id}")

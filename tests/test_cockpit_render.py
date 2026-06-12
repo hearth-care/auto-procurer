@@ -226,6 +226,7 @@ def test_capture_state_counts_invoices_needing_attention(monkeypatch) -> None:
         model_chain=["claude-sonnet-4-6"],
         fleet_bucket=None,
         state_prefix="state/xsource",
+        operator_display_name="Test Operator",
     )
     monkeypatch.setattr(
         cockpit,

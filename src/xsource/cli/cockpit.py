@@ -520,7 +520,7 @@ def _followup_select_step(ctx: WizardContext, bag: dict) -> StepResult:
         return StepResult(ok=False, message="No request id entered.")
 
     cfg = Config.from_env()
-    suppliers, requests_ = build_stores(cfg)
+    suppliers, requests_, _invoices = build_stores(cfg)
     request = requests_.get(request_id)
     if request is None:
         return StepResult(ok=False, message=f"Unknown request {request_id}.")
@@ -630,7 +630,7 @@ def _followup_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     supplier = bag.get("supplier")
     requests_ = None
     if request is None or supplier is None:
-        suppliers, requests_ = build_stores(cfg)
+        suppliers, requests_, _invoices = build_stores(cfg)
         request = requests_.get(bag["request_id"])
         if request is None:
             return StepResult(ok=False, message=f"Unknown request {bag['request_id']}.")
@@ -638,7 +638,7 @@ def _followup_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
         if supplier is None:
             return StepResult(ok=False, message=f"Unknown supplier {bag['supplier_id']}.")
     else:
-        _, requests_ = build_stores(cfg)
+        _, requests_, _invoices = build_stores(cfg)
 
     creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_GMAIL_TOKEN_PATH"])
     service = build("gmail", "v1", credentials=creds, cache_discovery=False)
@@ -724,7 +724,7 @@ def _reorder_proposal_step(ctx: WizardContext, bag: dict) -> StepResult:
         return StepResult(ok=False, message="No supplier id provided.")
 
     cfg = Config.from_env()
-    suppliers, requests_ = build_stores(cfg)
+    suppliers, requests_, _invoices = build_stores(cfg)
     supplier = next((s for s in suppliers.all() if s.id == supplier_id), None)
     if supplier is None:
         return StepResult(ok=False, message=f"Unknown supplier {supplier_id}.")
