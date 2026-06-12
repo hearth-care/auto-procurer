@@ -262,8 +262,8 @@ can't drift silently.
 
 ## HANDOFF NOTES
 
-- Current phase: QA fix for qa-codex-20260612T065532Z-7032 focused GREEN complete;
-  next run nearby/full gates, rebase check, push, and finish protocol.
+- Current phase: QA fix for qa-codex-20260612T065532Z-7032 nearby regression GREEN;
+  next run full gates, rebase check, push, and finish protocol.
 - Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
   `invoices.jsonl` `SyncedStore`, and focused tests.
 - Completed: Phase 2 capture/import/CLI/cockpit slice with price-history linkage,
@@ -429,5 +429,8 @@ can't drift silently.
 - Verification: focused GREEN
   `uv run pytest tests/cli/test_runtime_commands.py::test_invoice_add_reports_invalid_date_without_traceback tests/cli/test_runtime_commands.py::test_invoice_reemit_reports_invalid_date_without_traceback tests/walks/test_invoice_capture_walk.py::test_invoice_details_step_rejects_malformed_invoice_date tests/walks/test_invoice_capture_walk.py::test_invoice_details_step_rejects_malformed_due_date tests/walks/test_invoice_capture_walk.py::test_invoice_apply_step_reports_invalid_date_without_raising -q`
   returned `5 passed in 0.06s`.
-- Next concrete step: run nearby regression tests (`tests/cli/test_runtime_commands.py`
-  and `tests/walks/test_invoice_capture_walk.py`), then full gates and finish protocol.
+- Verification: nearby regression suite
+  `uv run pytest tests/cli/test_runtime_commands.py tests/walks/test_invoice_capture_walk.py -q`
+  returned `14 passed in 2.99s`.
+- Next concrete step: run full gates (`uv run pytest -q`, `uv run ruff check .`,
+  `uv run mypy`, `pre-commit run --all-files`), then rebase check and finish protocol.
