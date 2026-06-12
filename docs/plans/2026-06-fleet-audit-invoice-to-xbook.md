@@ -373,8 +373,19 @@ can't drift silently.
     parses the version via `_is_supported_version`, counting non-integer or unsupported
     versions as `skipped` and continuing past them. Three new tests in `tests/invoices/test_acks.py`
     cover non-integer, unsupported-numeric, and continue-past-bad-row cases.
-- Verification: `uv run pytest -q` returned `218 passed in 4.33s`.
-- Verification: `uv run ruff check .` returned `All checks passed!`.
-- Verification: `uv run mypy` returned `Success: no issues found in 59 source files`.
-- Next concrete step: rebase onto latest origin/main, push with lease, mark ready, move label to
-  `agent:needs-qa`, then post completion comment.
+- Verification (post-fix, pre-rebase): `uv run pytest -q` returned `218 passed`.
+- Rebase (2026-06-12, fixer-claude-20260612T061815Z-7032): rebased onto latest origin/main,
+  which now has PR #14 (p4-completion) merged. Resolved additive conflicts in
+  `src/xsource/cli/cockpit.py` (main added `request.trigger`/`request.followup`/`request.reorder`
+  walks + capabilities; PR added the invoice walk + `invoice.capture` capability — kept both) and
+  `tests/cli/test_runtime_commands.py` (kept both the reorder-rejects and invoice-registered tests).
+  Drift fix: main's p4 callers (`request.followup`/`reorder` in `cockpit.py` and `cli/request.py`)
+  unpacked a 2-tuple from `build_stores`, but this branch returns the 3-tuple
+  `(suppliers, requests, invoices)`; updated all callers and the matching test fakes to the 3-tuple
+  contract. Main also added a required `Config.operator_display_name`; added it to the two literal
+  `Config(...)` builds in `tests/test_cockpit_render.py` and `tests/store/test_remote.py`.
+- Verification (post-rebase): `uv run pytest -q` returned `257 passed in 3.85s`;
+  `uv run ruff check .` returned `All checks passed!`; `uv run mypy` returned
+  `Success: no issues found in 60 source files`. `pre-commit` is unavailable (no
+  `.pre-commit-config.yaml` in this repo — expected, confirmed across prior QA rounds).
+- Next concrete step: push with lease, mark ready, move label to `agent:needs-qa`, post DONE.
