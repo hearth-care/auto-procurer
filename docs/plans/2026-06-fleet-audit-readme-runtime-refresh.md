@@ -52,16 +52,18 @@ commands. Remove every scaffold instruction that contradicts current code.
 
 ### Phase 1 — audit the current README against the code
 
-- [ ] Diff every README claim against `uv run xsource --help` (and each
+- [x] Diff every README claim against `uv run xsource --help` (and each
       sub-app's `--help`) plus `src/xsource/cli/__init__.py` registrations.
-- [ ] List the claims to delete (scaffold "born with" framing, "no horizon
+- [x] List the claims to delete (scaffold "born with" framing, "no horizon
       yet", the whole "Make it real" section) and the claims to keep
       (Runtime/Cloud Run section, CI gates, copier note if still applicable —
       verify `copier update` is still supported before keeping it).
+      **Note:** no `.copier-answers.yml` found — `copier update` not supported;
+      section removed.
 
 ### Phase 2 — rewrite
 
-- [ ] New structure: what the worker does (one paragraph) → CLI surface
+- [x] New structure: what the worker does (one paragraph) → CLI surface
       (`signals`, `watcher`, `request` with all five request subcommands) →
       cockpit (TTY + `--agent-stdio` agent mode, shelves A–E and G, write-gate /
       draft-never-send posture) → signals (the four horizon builders, the
@@ -70,19 +72,19 @@ commands. Remove every scaffold instruction that contradicts current code.
       conventions the Doctor probes check, and what happens when each is
       absent — offline cache fallback, preflight blocks) → development
       (`uv sync`, `uv run pytest -q`, `uv run ruff check .`).
-- [ ] Quick start commands must be copy-pasteable and match real behaviour,
+- [x] Quick start commands must be copy-pasteable and match real behaviour,
       including expected output lines for the flag-off and flag-on
       `signals scan` runs.
-- [ ] Note explicitly that cockpit walks are gated: agent mode is dry-run by
+- [x] Note explicitly that cockpit walks are gated: agent mode is dry-run by
       default and applying requires the `--allow-apply` handshake.
 
 ### Phase 3 — consistency sweep
 
-- [ ] Update the stale module docstring in `tests/test_signals_build.py` (it
+- [x] Update the stale module docstring in `tests/test_signals_build.py` (it
       still describes the horizon as an xfail-guarded stub) **only if** the
       change stays docs/docstring-only; otherwise record it as a follow-up in
-      this doc.
-- [ ] Confirm no README statement contradicts `CLAUDE.md` (agent-navigability
+      this doc. **Done:** docstring updated; no test logic changed.
+- [x] Confirm no README statement contradicts `CLAUDE.md` (agent-navigability
       rules) or the Cloud Run runbook.
 
 ## Acceptance criteria
@@ -119,3 +121,16 @@ git diff --stat origin/main          # touches README.md (and at most one test d
 # repo gates stay green
 uv run ruff check . && uv run pytest -q
 ```
+
+## HANDOFF NOTES
+
+**Phase:** COMPLETE — all three phases implemented, local gates green.
+
+**Decisions taken:**
+- `copier update` section removed: no `.copier-answers.yml` in repo, template pull not supported.
+- Test docstring in `tests/test_signals_build.py` updated (docs-only, no test logic changed).
+- Cloud Run Runtime section preserved verbatim from PR #15 (no edits needed for flow).
+
+**Known-failing tests:** none — 205 passed.
+
+**Next step:** none; PR ready for QA.
