@@ -288,11 +288,25 @@ New module `src/xsource/p4/reorder.py` + capability `request.reorder`:
   reorder capability. That was fixed by the previous QA-fix commit on this branch:
   `run_cockpit(focus=...)` now deep-links to `request.reorder:<supplier_id>`.
 
+### QA-fix round 3 (fixer-claude-20260612T055029Z-89007)
+
+Addressed the three remaining QA FAIL findings:
+
+- **Finding 1+2 (followup CLI bypasses gate / doesn't persist):** `followup` CLI now
+  validates inputs (request exists, supplier exists, reply recorded) then calls
+  `run_cockpit(focus="request.followup:{req}:{sup}")` instead of handling the Gmail
+  draft directly via `typer.confirm`. `_followup_select_step` parses the pre-filled
+  request_id and supplier_id from the focus string so no interactive prompts are
+  needed when launched from the CLI. This routes all draft creation through the
+  framework's `confirm_apply` gate in `_followup_apply_step`, which is the only
+  write path.
+
+- **Finding 3 (budget_hint dropped from reorder constraints):** `_reorder_proposal_step`
+  now includes `"budget_hint": proposal.budget_hint` in `reorder_constraints`.
+
 ### Latest gates
 
-- `uv run pytest tests/p4/test_followup_wiring.py -q` -> 7 passed
-- `uv run pytest tests/p4 -q` -> 40 passed
-- `uv run pytest -q` -> 202 passed
+- `uv run pytest -q` -> 205 passed
 - `uv run ruff check .` -> All checks passed
 - `uv run mypy` -> Success: no issues found in 56 source files
 - `pre-commit run --all-files` -> skipped because `.pre-commit-config.yaml` is not a file
