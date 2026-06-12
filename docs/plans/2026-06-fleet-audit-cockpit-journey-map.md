@@ -49,43 +49,43 @@ current state (implemented / config-gated / placeholder, with the code path),
 preconditions (env vars, tokens, open-request state), mutation risk and gate,
 and target live path.
 
-- [ ] **New request** (shelf A: `request.new`, `request.trigger`,
+- [x] **New request** (shelf A: `request.new`, `request.trigger`,
       `request.reorder`) — implemented walks; preflight blocks without Maps
       key, LLM key, Sheets token, home postcode; apply creates one Sheet +
       store records behind the apply gate.
-- [ ] **Requests** (shelf B: `request.list` placeholder card,
+- [x] **Requests** (shelf B: `request.list` placeholder card,
       `request.sync` card → real `xsource request sync` / `sync-all`) —
       target: list renders live store data; sync-all gains a read-only
       preview (`--dry-run`) so operators can inspect before mutating.
-- [ ] **Black book** (shelf C: `book.search`, `book.import` placeholder
+- [x] **Black book** (shelf C: `book.search`, `book.import` placeholder
       cards over real `src/xsource/book/*` modules) — target: cards wired to
       the existing search/import code, read paths first.
-- [ ] **Publish** (shelf D: `book.publish`, `partner.checkatrade`
+- [x] **Publish** (shelf D: `book.publish`, `partner.checkatrade`
       placeholders) — target: publish wired to the existing publish module;
       checkatrade stays build-only behind the gate.
-- [ ] **Outreach** (shelf E: `request.outreach`, `request.followup` walks
+- [x] **Outreach** (shelf E: `request.outreach`, `request.followup` walks
       implemented and draft-only; `watcher.status` card) — target: status
       card renders the real watcher data the CLI already prints, including
       the pending-replies backlog.
-- [ ] **Diagnostics** (shelf G / `g`: doctor screen implemented with real
+- [x] **Diagnostics** (shelf G / `g`: doctor screen implemented with real
       probes; doctor card is `run=None`) — target: one read-only health
       surface combining store counts, watcher status, signal count, and
       config readiness.
-- [ ] Document the modal shelf-menu behaviour (global shelf keys inactive
+- [x] Document the modal shelf-menu behaviour (global shelf keys inactive
       inside a menu) and that shelves run A–E and G with no F.
 
 ### Phase 2 — affordance status cleanup (small, code)
 
-- [ ] Every `run=None` capability's summary states its status explicitly
+- [x] Every `run=None` capability's summary states its status explicitly
       (e.g. trailing "Planned — not yet wired." or "Read-only view via CLI."),
       so a rendered card is self-describing instead of looking clickable.
-- [ ] Add/extend a drive test asserting each placeholder card's frame carries
+- [x] Add/extend a drive test asserting each placeholder card's frame carries
       the status wording, and that the two cards with live CLI twins
       (`request.sync`, `watcher.status`) reference commands that parse.
 
 ### Phase 3 — follow-up scoping
 
-- [ ] Close the doc with a scoped follow-up table (one row per unbuilt target
+- [x] Close the doc with a scoped follow-up table (one row per unbuilt target
       live path: request list data view, sync-all dry-run, book wiring,
       publish wiring, combined status surface) sized roughly and ordered, so
       later implementation PRs can be cut straight from rows.
@@ -120,3 +120,19 @@ uv run pytest tests/ -k "cockpit or contract" -q
 # gates
 uv run pytest -q && uv run ruff check .
 ```
+
+## HANDOFF NOTES
+
+**Status:** COMPLETE — all phases implemented and gates green.
+
+**Phase 1:** `docs/cockpit-journeys.md` created. All 13 capability keys present; all six journeys documented with entry point, state, preconditions, mutation risk, and target path. Modal shelf-menu behaviour and missing-F-shelf noted.
+
+**Phase 2:** All `run=None` capability summaries in `src/xsource/cli/cockpit.py` updated with explicit status wording (`"Planned — not yet wired."`, `"Read-only via CLI: ..."`, `"Build-only — post gate required."`, `"Live — press G to open."`). New test file `tests/test_cockpit_placeholders.py` added (3 tests: registry check for all 8 placeholders, drive-based assertion for `request.sync` card, drive-based assertion for `watcher.status` card).
+
+**Phase 3:** Follow-up scoping table appended to `docs/cockpit-journeys.md` — 8 rows, each with capability, target, size, and notes.
+
+**Deviations:**
+- `equivalent_cli=None` capabilities (`request.list`, `book.search`, `book.import`, `book.publish`, `partner.checkatrade`) crash when driven into via `CockpitDriver` (framework `chip()` bug: `'NoneType'.strip()`). Placeholder status for these is tested via registry rather than drive; the two CLI-backed cards (`request.sync`, `watcher.status`) are tested via drive. This was not addressable without touching the framework (out of scope per plan's non-goals).
+- Doctor capability (`run=None`) is live via framework host hooks (pressing G opens the real doctor screen); summary wording reflects this rather than "Planned — not yet wired."
+
+**Gates:** `uv run pytest -q` → 208 passed. `uv run ruff check .` → all checks passed.
