@@ -54,7 +54,7 @@ def _variance(
     }
 
 
-def _validate_iso_date(value: str, field: str) -> None:
+def validate_iso_date(value: str, field: str) -> None:
     try:
         dt.date.fromisoformat(value)
     except ValueError:
@@ -79,9 +79,9 @@ def capture_invoice(
     file_ref: str | None = None,
     tolerance: float = 0.10,
 ) -> CaptureReport:
-    _validate_iso_date(invoice_date, "invoice_date")
+    validate_iso_date(invoice_date, "invoice_date")
     if due_date:
-        _validate_iso_date(due_date, "due_date")
+        validate_iso_date(due_date, "due_date")
     if amount_minor <= 0:
         raise ValueError(f"amount_minor must be a positive integer, got {amount_minor}")
     now = now or dt.datetime.now(dt.UTC).isoformat()
@@ -188,10 +188,10 @@ def reemit_invoice(
             raise ValueError("suppliers store is required when correcting amount_minor")
         invoice.amount_minor = amount_minor
     if invoice_date is not None:
-        _validate_iso_date(invoice_date, "invoice_date")
+        validate_iso_date(invoice_date, "invoice_date")
         invoice.invoice_date = invoice_date
     if due_date is not None:
-        _validate_iso_date(due_date, "due_date")
+        validate_iso_date(due_date, "due_date")
         invoice.due_date = due_date
     if description is not None:
         invoice.description = description

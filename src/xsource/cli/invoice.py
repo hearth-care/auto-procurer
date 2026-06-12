@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import NoReturn
 
 import typer
 
@@ -23,6 +24,11 @@ _ACK_PATH_ARG = typer.Argument(
 )
 
 
+def _operator_error(exc: ValueError) -> NoReturn:
+    typer.echo(str(exc), err=True)
+    raise typer.Exit(1)
+
+
 @invoice_app.command("add")
 def add(
     supplier_id: str = typer.Option(..., "--supplier-id"),
@@ -37,21 +43,24 @@ def add(
 ) -> None:
     cfg = Config.from_env()
     suppliers, requests, invoices = build_stores(cfg)
-    report = capture_invoice(
-        suppliers=suppliers,
-        requests=requests,
-        invoices=invoices,
-        request_id=request_id,
-        supplier_id=supplier_id,
-        amount_minor=amount_minor,
-        invoice_number=invoice_number,
-        invoice_date=invoice_date,
-        due_date=due_date,
-        description=description,
-        source="manual",
-        currency=currency,
-        file_ref=file_ref,
-    )
+    try:
+        report = capture_invoice(
+            suppliers=suppliers,
+            requests=requests,
+            invoices=invoices,
+            request_id=request_id,
+            supplier_id=supplier_id,
+            amount_minor=amount_minor,
+            invoice_number=invoice_number,
+            invoice_date=invoice_date,
+            due_date=due_date,
+            description=description,
+            source="manual",
+            currency=currency,
+            file_ref=file_ref,
+        )
+    except ValueError as exc:
+        _operator_error(exc)
     typer.echo(
         {
             "invoice_id": report.invoice_id,
@@ -91,16 +100,19 @@ def reemit(
     """Correct a rejected invoice and return it to the emittable lifecycle."""
     cfg = Config.from_env()
     suppliers, _requests, invoices = build_stores(cfg)
-    invoice = reemit_invoice(
-        invoices,
-        invoice_id,
-        suppliers=suppliers,
-        amount_minor=amount_minor,
-        invoice_date=invoice_date,
-        due_date=due_date,
-        description=description,
-        invoice_number=invoice_number,
-    )
+    try:
+        invoice = reemit_invoice(
+            invoices,
+            invoice_id,
+            suppliers=suppliers,
+            amount_minor=amount_minor,
+            invoice_date=invoice_date,
+            due_date=due_date,
+            description=description,
+            invoice_number=invoice_number,
+        )
+    except ValueError as exc:
+        _operator_error(exc)
     typer.echo({"invoice_id": invoice.id, "status": invoice.status})
 
 
@@ -111,7 +123,10 @@ def write_off(
     """Mark a rejected invoice written off (it will never be re-emitted)."""
     cfg = Config.from_env()
     _suppliers, _requests, invoices = build_stores(cfg)
-    invoice = write_off_invoice(invoices, invoice_id)
+    try:
+        invoice = write_off_invoice(invoices, invoice_id)
+    except ValueError as exc:
+        _operator_error(exc)
     typer.echo({"invoice_id": invoice.id, "status": invoice.status})
 
 

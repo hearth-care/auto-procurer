@@ -25,6 +25,7 @@ from rich.console import Console, RenderableType
 from xsource.book.search import find_matches
 from xsource.budget import Budget
 from xsource.config import Config
+from xsource.invoices.capture import validate_iso_date
 from xsource.research.candidates import Candidate
 from xsource.research.pipeline import RunCaps, run_research
 from xsource.research.triage import Triage, run_triage
@@ -594,6 +595,18 @@ def _invoice_details_step(ctx: WizardContext, bag: dict) -> StepResult:
             ok=False,
             message=f"Amount must be a positive integer in minor units, got {amount_minor}.",
         )
+    try:
+        validate_iso_date(invoice_date, "invoice_date")
+    except ValueError as exc:
+        return StepResult(ok=False, message=str(exc))
+    request_id = input_fn("Request id (optional): ").strip()
+    invoice_number = input_fn("Invoice number (optional): ").strip() or None
+    due_date = input_fn("Due date (optional): ").strip() or None
+    if due_date:
+        try:
+            validate_iso_date(due_date, "due_date")
+        except ValueError as exc:
+            return StepResult(ok=False, message=str(exc))
     return StepResult(
         ok=True,
         data={
@@ -601,9 +614,9 @@ def _invoice_details_step(ctx: WizardContext, bag: dict) -> StepResult:
             "amount_minor": amount_minor,
             "invoice_date": invoice_date,
             "description": description,
-            "request_id": input_fn("Request id (optional): ").strip(),
-            "invoice_number": input_fn("Invoice number (optional): ").strip() or None,
-            "due_date": input_fn("Due date (optional): ").strip() or None,
+            "request_id": request_id,
+            "invoice_number": invoice_number,
+            "due_date": due_date,
         },
     )
 
@@ -680,19 +693,22 @@ def _invoice_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
 
     cfg = Config.from_env()
     suppliers, requests_, invoices = build_stores(cfg)
-    report = capture_invoice(
-        suppliers=suppliers,
-        requests=requests_,
-        invoices=invoices,
-        request_id=bag.get("request_id") or "",
-        supplier_id=bag["supplier_id"],
-        amount_minor=bag["amount_minor"],
-        invoice_number=bag.get("invoice_number"),
-        invoice_date=bag["invoice_date"],
-        due_date=bag.get("due_date"),
-        description=bag["description"],
-        source="manual",
-    )
+    try:
+        report = capture_invoice(
+            suppliers=suppliers,
+            requests=requests_,
+            invoices=invoices,
+            request_id=bag.get("request_id") or "",
+            supplier_id=bag["supplier_id"],
+            amount_minor=bag["amount_minor"],
+            invoice_number=bag.get("invoice_number"),
+            invoice_date=bag["invoice_date"],
+            due_date=bag.get("due_date"),
+            description=bag["description"],
+            source="manual",
+        )
+    except ValueError as exc:
+        return StepResult(ok=False, message=str(exc))
     return StepResult(
         ok=True,
         data={"summary": f"Captured {report.invoice_id}.", "warnings": report.warnings},

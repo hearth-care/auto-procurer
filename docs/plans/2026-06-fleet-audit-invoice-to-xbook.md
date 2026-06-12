@@ -262,8 +262,8 @@ can't drift silently.
 
 ## HANDOFF NOTES
 
-- Current phase: QA fix for qa-codex-20260612T063408Z-7032 complete on latest
-  `origin/main`; finish protocol.
+- Current phase: QA fix for qa-codex-20260612T065532Z-7032 focused GREEN complete;
+  next run nearby/full gates, rebase check, push, and finish protocol.
 - Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
   `invoices.jsonl` `SyncedStore`, and focused tests.
 - Completed: Phase 2 capture/import/CLI/cockpit slice with price-history linkage,
@@ -415,5 +415,19 @@ can't drift silently.
 - Verification: `uv run mypy` returned `Success: no issues found in 60 source files`.
 - Verification: `pre-commit run --all-files` returned `InvalidConfigError:
   .pre-commit-config.yaml is not a file` (expected for this repo; no config exists).
-- Next concrete step: push final handoff note, mark ready, move label to
-  `agent:needs-qa`, post DONE.
+- QA fix (fixer-codex-20260612T070053Z-7032): Addressed the HIGH finding from
+  qa-codex-20260612T065532Z-7032. `xsource invoice add` and `xsource invoice reemit`
+  now catch invoice validation `ValueError`s and print a concise operator error before
+  exiting non-zero, rather than surfacing a traceback. The cockpit invoice details step
+  now validates `invoice_date` and optional `due_date` before review/apply, and the
+  cockpit apply step catches any final `capture_invoice` validation error and returns
+  `StepResult(ok=False)`.
+- Verification: focused RED
+  `uv run pytest tests/cli/test_runtime_commands.py::test_invoice_add_reports_invalid_date_without_traceback tests/cli/test_runtime_commands.py::test_invoice_reemit_reports_invalid_date_without_traceback tests/walks/test_invoice_capture_walk.py::test_invoice_details_step_rejects_malformed_invoice_date tests/walks/test_invoice_capture_walk.py::test_invoice_details_step_rejects_malformed_due_date tests/walks/test_invoice_capture_walk.py::test_invoice_apply_step_reports_invalid_date_without_raising -q`
+  returned five failures: two CLI paths produced empty output with uncaught `ValueError`,
+  two cockpit details-step paths returned `ok=True`, and cockpit apply raised `ValueError`.
+- Verification: focused GREEN
+  `uv run pytest tests/cli/test_runtime_commands.py::test_invoice_add_reports_invalid_date_without_traceback tests/cli/test_runtime_commands.py::test_invoice_reemit_reports_invalid_date_without_traceback tests/walks/test_invoice_capture_walk.py::test_invoice_details_step_rejects_malformed_invoice_date tests/walks/test_invoice_capture_walk.py::test_invoice_details_step_rejects_malformed_due_date tests/walks/test_invoice_capture_walk.py::test_invoice_apply_step_reports_invalid_date_without_raising -q`
+  returned `5 passed in 0.06s`.
+- Next concrete step: run nearby regression tests (`tests/cli/test_runtime_commands.py`
+  and `tests/walks/test_invoice_capture_walk.py`), then full gates and finish protocol.

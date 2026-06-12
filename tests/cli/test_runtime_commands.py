@@ -3,6 +3,8 @@ from __future__ import annotations
 from typer.testing import CliRunner
 
 from xsource.cli import app
+from xsource.store.jsonl import JsonlStore
+from xsource.store.models import InvoiceRecord, Request, Supplier
 
 runner = CliRunner()
 
@@ -68,6 +70,81 @@ def test_invoice_commands_are_registered():
     assert "import" in result.stdout
     assert "list" in result.stdout
     assert "sync-acks" in result.stdout
+
+
+def _invoice_stores(tmp_path):
+    suppliers = JsonlStore(tmp_path / "suppliers.jsonl", Supplier)
+    requests = JsonlStore(tmp_path / "requests.jsonl", Request)
+    invoices = JsonlStore(tmp_path / "invoices.jsonl", InvoiceRecord)
+    return suppliers, requests, invoices
+
+
+def test_invoice_add_reports_invalid_date_without_traceback(monkeypatch, tmp_path):
+    from xsource.cli import invoice as invoice_mod
+
+    suppliers, requests, invoices = _invoice_stores(tmp_path)
+    suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))
+    monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        invoice_mod, "build_stores", lambda cfg: (suppliers, requests, invoices)
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "invoice",
+            "add",
+            "--supplier-id",
+            "s-0001",
+            "--amount-minor",
+            "10000",
+            "--invoice-date",
+            "11/06/2026",
+            "--description",
+            "Bad date",
+            "--invoice-number",
+            "INV-BAD",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "invalid invoice_date" in result.output
+    assert "Traceback" not in result.output
+    assert invoices.all() == []
+
+
+def test_invoice_reemit_reports_invalid_date_without_traceback(monkeypatch, tmp_path):
+    from xsource.cli import invoice as invoice_mod
+
+    suppliers, requests, invoices = _invoice_stores(tmp_path)
+    suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))
+    invoices.upsert(
+        InvoiceRecord(
+            id="i-0001",
+            request_id="",
+            supplier_id="s-0001",
+            amount_minor=10000,
+            invoice_date="2026-06-11",
+            due_date="2026-06-30",
+            description="Boiler repair",
+            source="manual",
+            status="rejected",
+        )
+    )
+    monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        invoice_mod, "build_stores", lambda cfg: (suppliers, requests, invoices)
+    )
+
+    result = runner.invoke(
+        app,
+        ["invoice", "reemit", "i-0001", "--due-date", "30/06/2026"],
+    )
+
+    assert result.exit_code == 1
+    assert "invalid due_date" in result.output
+    assert "Traceback" not in result.output
+    assert invoices.get("i-0001").status == "rejected"
 
 
 def test_watcher_run_once_can_idle_without_anthropic_key(monkeypatch, tmp_path):
