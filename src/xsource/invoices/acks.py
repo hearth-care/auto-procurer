@@ -14,7 +14,26 @@ _SUPPORTED_CONTRACT_VERSION = 1
 def read_ack_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    records: list[dict[str, Any]] = []
+    for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            records.append(
+                {
+                    "_malformed": "json",
+                    "line": line_number,
+                    "error": exc.msg,
+                }
+            )
+            continue
+        if isinstance(record, dict):
+            records.append(record)
+        else:
+            records.append({"_malformed": "json", "line": line_number})
+    return records
 
 
 def _is_supported_version(raw: Any) -> bool:

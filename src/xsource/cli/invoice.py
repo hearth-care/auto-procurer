@@ -90,10 +90,11 @@ def reemit(
 ) -> None:
     """Correct a rejected invoice and return it to the emittable lifecycle."""
     cfg = Config.from_env()
-    _suppliers, _requests, invoices = build_stores(cfg)
+    suppliers, _requests, invoices = build_stores(cfg)
     invoice = reemit_invoice(
         invoices,
         invoice_id,
+        suppliers=suppliers,
         amount_minor=amount_minor,
         invoice_date=invoice_date,
         due_date=due_date,

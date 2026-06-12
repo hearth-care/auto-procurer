@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 
 from xsource.invoices.acks import ingest_ack_records
 from xsource.invoices.capture import capture_invoice, reemit_invoice, write_off_invoice
+from xsource.signals.build import build_invoice_variance_signals
 from xsource.store.jsonl import JsonlStore
 from xsource.store.models import InvoiceRecord, Request, Supplier
 
@@ -56,11 +58,12 @@ def _rejected_invoice(tmp_path: Path) -> tuple:
 
 
 def test_reemit_corrects_and_returns_invoice_to_emittable(tmp_path):
-    _, _, invoices, invoice_id = _rejected_invoice(tmp_path)
+    suppliers, _, invoices, invoice_id = _rejected_invoice(tmp_path)
 
     invoice = reemit_invoice(
         invoices,
         invoice_id,
+        suppliers=suppliers,
         amount_minor=13000,
         description="Boiler repair (corrected VAT)",
         now="2026-06-11T17:00:00+00:00",
@@ -93,6 +96,86 @@ def test_reemitted_invoice_can_be_acknowledged_end_to_end(tmp_path):
 
     assert report == {"acknowledged": 1, "rejected": 0, "skipped": 0}
     assert invoices.get(invoice_id).status == "acknowledged"
+
+
+def test_reemit_amount_correction_updates_variance_and_price_history(tmp_path):
+    suppliers, requests, invoices = _stores(tmp_path)
+    suppliers.upsert(
+        Supplier(
+            id="s-0001",
+            name="Smith Heating",
+            price_history=[
+                {
+                    "request_id": "r-0001",
+                    "date": "2026-06-10",
+                    "amount_minor": 10000,
+                    "outcome": "used",
+                }
+            ],
+        )
+    )
+    requests.upsert(
+        Request(
+            id="r-0001",
+            created_at="2026-06-10T12:00:00+00:00",
+            raw_need="boiler repair",
+            chosen_supplier_id="s-0001",
+        )
+    )
+    report = capture_invoice(
+        suppliers=suppliers,
+        requests=requests,
+        invoices=invoices,
+        request_id="r-0001",
+        supplier_id="s-0001",
+        amount_minor=12500,
+        invoice_number="INV-100",
+        invoice_date="2026-06-11",
+        due_date="2026-06-30",
+        description="Boiler repair",
+        source="manual",
+        now="2026-06-11T12:00:00+00:00",
+    )
+    ingest_ack_records(
+        invoices,
+        [
+            {
+                "invoice_id": report.invoice_id,
+                "consumer_run_id": "xbook-run-1",
+                "disposition": "rejected:amount mismatch",
+                "timestamp": "2026-06-11T15:00:00+00:00",
+                "contract_version": 1,
+            }
+        ],
+    )
+
+    invoice = reemit_invoice(
+        invoices,
+        report.invoice_id,
+        suppliers=suppliers,
+        amount_minor=10000,
+        description="Boiler repair corrected",
+        now="2026-06-11T17:00:00+00:00",
+    )
+
+    supplier = suppliers.get("s-0001")
+    assert invoice.status == "emitted"
+    assert invoice.amount_minor == 10000
+    assert "variance" not in invoice.handoff
+    assert supplier.price_history[-1] == {
+        "request_id": "r-0001",
+        "date": "2026-06-11",
+        "amount_minor": 10000,
+        "outcome": "invoiced",
+        "invoice_id": report.invoice_id,
+    }
+    signals = build_invoice_variance_signals(
+        [invoice],
+        [supplier],
+        today=date(2026, 6, 11),
+        now=datetime(2026, 6, 11, 17, 0, tzinfo=UTC),
+    )
+    assert signals == ()
 
 
 def test_reemit_rejects_non_positive_amount(tmp_path):

@@ -262,7 +262,8 @@ can't drift silently.
 
 ## HANDOFF NOTES
 
-- Current phase: QA fix complete on latest `origin/main`; finish protocol.
+- Current phase: QA fix for qa-codex-20260612T063408Z-7032 complete; run full gates,
+  rebase onto latest `origin/main`, push, then finish protocol.
 - Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
   `invoices.jsonl` `SyncedStore`, and focused tests.
 - Completed: Phase 2 capture/import/CLI/cockpit slice with price-history linkage,
@@ -388,4 +389,24 @@ can't drift silently.
   `uv run ruff check .` returned `All checks passed!`; `uv run mypy` returned
   `Success: no issues found in 60 source files`. `pre-commit` is unavailable (no
   `.pre-commit-config.yaml` in this repo — expected, confirmed across prior QA rounds).
-- Next concrete step: push with lease, mark ready, move label to `agent:needs-qa`, post DONE.
+- QA fix (fixer-codex-20260612T064500Z-7032): Addressed the two HIGH findings from
+  qa-codex-20260612T063408Z-7032.
+  - Finding 1 (malformed ack JSONL crashed `sync-acks`): `read_ack_jsonl` now parses
+    line-by-line, converts malformed/non-object rows into skipped sentinel records, and
+    lets later valid ack rows continue into `ingest_ack_records`.
+  - Finding 2 (`reemit --amount-minor` left stale derived state): amount corrections now
+    require supplier-store context, update the linked `"invoiced"` price-history row,
+    recompute or clear `handoff["variance"]`, set `variance_resolved_at` when a previous
+    variance is resolved, and then re-emit the invoice. The CLI passes suppliers through.
+- Verification: focused RED
+  `uv run pytest tests/invoices/test_acks.py::test_read_ack_jsonl_continues_past_malformed_lines tests/invoices/test_recovery.py::test_reemit_amount_correction_updates_variance_and_price_history -q`
+  returned two failures: `JSONDecodeError` in `read_ack_jsonl`, and
+  `TypeError: reemit_invoice() got an unexpected keyword argument 'suppliers'`.
+- Verification: focused GREEN
+  `uv run pytest tests/invoices/test_acks.py::test_read_ack_jsonl_continues_past_malformed_lines tests/invoices/test_recovery.py::test_reemit_amount_correction_updates_variance_and_price_history -q`
+  returned `2 passed in 0.03s`.
+- Verification: nearby regression suite
+  `uv run pytest tests/invoices/test_acks.py tests/invoices/test_recovery.py tests/invoices/test_capture.py tests/test_signals_build.py -q`
+  returned `42 passed in 0.07s`.
+- Next concrete step: run full local gates, rebase onto latest `origin/main`, push with
+  lease, mark ready, move label to `agent:needs-qa`, post DONE.

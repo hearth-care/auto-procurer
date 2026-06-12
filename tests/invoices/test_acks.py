@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from xsource.invoices.acks import ingest_ack_records
+from xsource.invoices.acks import ingest_ack_records, read_ack_jsonl
 from xsource.invoices.capture import capture_invoice
 from xsource.store.jsonl import JsonlStore
 from xsource.store.models import InvoiceRecord, Request, Supplier
@@ -162,6 +163,57 @@ def test_ingest_continues_past_a_malformed_version_row(tmp_path):
 
     assert report == {"acknowledged": 1, "rejected": 0, "skipped": 1}
     assert invoices.get(invoice_id).status == "acknowledged"
+
+
+def test_read_ack_jsonl_continues_past_malformed_lines(tmp_path):
+    """One malformed JSONL row must count as skipped without blocking later acks."""
+    suppliers, requests, invoices, first_invoice_id = _capture_one(tmp_path)
+    second_report = capture_invoice(
+        suppliers=suppliers,
+        requests=requests,
+        invoices=invoices,
+        request_id="",
+        supplier_id="s-0001",
+        amount_minor=12500,
+        invoice_number="INV-101",
+        invoice_date="2026-06-11",
+        due_date="2026-06-30",
+        description="Boiler repair 2",
+        source="manual",
+        now="2026-06-11T12:30:00+00:00",
+    )
+    path = tmp_path / "acks.jsonl"
+    path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "invoice_id": first_invoice_id,
+                        "consumer_run_id": "xbook-run-1",
+                        "disposition": "accepted",
+                        "timestamp": "2026-06-11T15:00:00+00:00",
+                        "contract_version": 1,
+                    }
+                ),
+                "not-json",
+                json.dumps(
+                    {
+                        "invoice_id": second_report.invoice_id,
+                        "consumer_run_id": "xbook-run-2",
+                        "disposition": "accepted",
+                        "timestamp": "2026-06-11T16:00:00+00:00",
+                        "contract_version": 1,
+                    }
+                ),
+            ]
+        )
+    )
+
+    report = ingest_ack_records(invoices, read_ack_jsonl(path))
+
+    assert report == {"acknowledged": 2, "rejected": 0, "skipped": 1}
+    assert invoices.get(first_invoice_id).status == "acknowledged"
+    assert invoices.get(second_report.invoice_id).status == "acknowledged"
 
 
 def test_ingest_ack_also_works_from_emitted_state(tmp_path):

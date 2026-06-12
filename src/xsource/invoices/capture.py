@@ -158,6 +158,7 @@ def reemit_invoice(
     invoices,
     invoice_id: str,
     *,
+    suppliers=None,
     amount_minor: int | None = None,
     invoice_date: str | None = None,
     due_date: str | None = None,
@@ -179,9 +180,12 @@ def reemit_invoice(
         raise ValueError(
             f"invoice {invoice_id} is {invoice.status}; only rejected invoices can be re-emitted"
         )
+    at = now or dt.datetime.now(dt.UTC).isoformat()
     if amount_minor is not None:
         if amount_minor <= 0:
             raise ValueError(f"amount_minor must be a positive integer, got {amount_minor}")
+        if suppliers is None:
+            raise ValueError("suppliers store is required when correcting amount_minor")
         invoice.amount_minor = amount_minor
     if invoice_date is not None:
         _validate_iso_date(invoice_date, "invoice_date")
@@ -193,10 +197,63 @@ def reemit_invoice(
         invoice.description = description
     if invoice_number is not None:
         invoice.invoice_number = invoice_number
-    invoice.transition_to("emitted", at=now)
+    if amount_minor is not None:
+        _refresh_amount_derivations(
+            suppliers=suppliers,
+            invoice=invoice,
+            tolerance=0.10,
+            at=at,
+        )
+    invoice.transition_to("emitted", at=at)
     invoice.handoff.pop("rejection_reason", None)
     invoices.upsert(invoice)
     return invoice
+
+
+def _refresh_amount_derivations(
+    *,
+    suppliers,
+    invoice: InvoiceRecord,
+    tolerance: float,
+    at: str,
+) -> None:
+    supplier = suppliers.get(invoice.supplier_id)
+    if supplier is None:
+        raise ValueError(f"unknown supplier id {invoice.supplier_id}")
+
+    found_invoiced_row = False
+    for row in supplier.price_history:
+        if row.get("invoice_id") == invoice.id and row.get("outcome") == "invoiced":
+            row["amount_minor"] = invoice.amount_minor
+            found_invoiced_row = True
+            break
+    if not found_invoiced_row:
+        supplier.price_history.append(
+            {
+                "request_id": invoice.request_id,
+                "date": _today_from_iso(at),
+                "amount_minor": invoice.amount_minor,
+                "outcome": "invoiced",
+                "invoice_id": invoice.id,
+            }
+        )
+
+    quoted_minor = (
+        _quote_minor(supplier.price_history, invoice.request_id) if invoice.request_id else None
+    )
+    variance = _variance(
+        quoted_minor=quoted_minor,
+        invoiced_minor=invoice.amount_minor,
+        tolerance=tolerance,
+    )
+    if variance is None:
+        if "variance" in invoice.handoff:
+            invoice.handoff["variance_resolved_at"] = at
+        invoice.handoff.pop("variance", None)
+    else:
+        invoice.handoff["variance"] = variance
+        invoice.handoff.pop("variance_resolved_at", None)
+    suppliers.upsert(supplier)
 
 
 def write_off_invoice(invoices, invoice_id: str, *, now: str | None = None) -> InvoiceRecord:
