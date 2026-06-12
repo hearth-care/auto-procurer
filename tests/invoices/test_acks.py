@@ -94,6 +94,76 @@ def test_ingest_rejected_ack_from_captured_records_reason(tmp_path):
     assert invoice.handoff["rejection_reason"] == "missing VAT number"
 
 
+def test_ingest_non_integer_contract_version_is_skipped_not_crash(tmp_path):
+    """A malformed contract_version must not crash the whole sync; skip the row."""
+    _, _, invoices, invoice_id = _capture_one(tmp_path)
+
+    report = ingest_ack_records(
+        invoices,
+        [
+            {
+                "invoice_id": invoice_id,
+                "consumer_run_id": "xbook-run-bad",
+                "disposition": "accepted",
+                "timestamp": "2026-06-11T15:00:00+00:00",
+                "contract_version": "bogus",
+            }
+        ],
+    )
+
+    assert report == {"acknowledged": 0, "rejected": 0, "skipped": 1}
+    assert invoices.get(invoice_id).status == "captured"
+
+
+def test_ingest_unsupported_numeric_version_is_skipped(tmp_path):
+    """A numerically-valid but unsupported contract_version is ignored per the versioning rule."""
+    _, _, invoices, invoice_id = _capture_one(tmp_path)
+
+    report = ingest_ack_records(
+        invoices,
+        [
+            {
+                "invoice_id": invoice_id,
+                "consumer_run_id": "xbook-run-future",
+                "disposition": "accepted",
+                "timestamp": "2026-06-11T15:00:00+00:00",
+                "contract_version": 99,
+            }
+        ],
+    )
+
+    assert report == {"acknowledged": 0, "rejected": 0, "skipped": 1}
+    assert invoices.get(invoice_id).status == "captured"
+
+
+def test_ingest_continues_past_a_malformed_version_row(tmp_path):
+    """One bad record must not stop later, valid ack rows from being processed."""
+    _, _, invoices, invoice_id = _capture_one(tmp_path)
+
+    report = ingest_ack_records(
+        invoices,
+        [
+            {
+                "invoice_id": invoice_id,
+                "consumer_run_id": "xbook-run-bad",
+                "disposition": "accepted",
+                "timestamp": "2026-06-11T15:00:00+00:00",
+                "contract_version": "bogus",
+            },
+            {
+                "invoice_id": invoice_id,
+                "consumer_run_id": "xbook-run-good",
+                "disposition": "accepted",
+                "timestamp": "2026-06-11T16:00:00+00:00",
+                "contract_version": 1,
+            },
+        ],
+    )
+
+    assert report == {"acknowledged": 1, "rejected": 0, "skipped": 1}
+    assert invoices.get(invoice_id).status == "acknowledged"
+
+
 def test_ingest_ack_also_works_from_emitted_state(tmp_path):
     """Re-emitted and emitted invoices should still be ack-able (regression guard)."""
     _, _, invoices, invoice_id = _capture_one(tmp_path)

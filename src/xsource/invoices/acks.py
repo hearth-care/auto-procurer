@@ -17,10 +17,18 @@ def read_ack_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
+def _is_supported_version(raw: Any) -> bool:
+    """Parse a contract_version defensively; unknown/malformed versions are ignored."""
+    try:
+        return int(raw) == _SUPPORTED_CONTRACT_VERSION
+    except (TypeError, ValueError):
+        return False
+
+
 def ingest_ack_records(invoices, records: list[dict[str, Any]]) -> dict[str, int]:
     report = {"acknowledged": 0, "rejected": 0, "skipped": 0}
     for record in records:
-        if int(record.get("contract_version") or 0) != _SUPPORTED_CONTRACT_VERSION:
+        if not _is_supported_version(record.get("contract_version")):
             report["skipped"] += 1
             continue
         invoice = invoices.get(str(record.get("invoice_id") or ""))
