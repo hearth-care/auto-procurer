@@ -59,10 +59,10 @@ def test_placeholder_summaries_carry_status_wording():
 def test_request_sync_card_summary_via_drive():
     """Drive into the request.sync card and assert status wording in the model frame."""
     host = cockpit._host(agent_mode=True)
-    # Shelf B: item 1 = request.list, item 2 = request.sync
-    stream = CockpitDriver(host, keys=["B", "2", "q", "q"]).run()
+    # Shelf B: item 1 = invoice.capture, item 2 = request.list, item 3 = request.sync
+    stream = CockpitDriver(host, keys=["B", "3", "q", "q"]).run()
     cards = [m for m in stream if m.kind == "card"]
-    assert cards, "No card frame reached after driving to shelf B item 2"
+    assert cards, "No card frame reached after driving to shelf B item 3"
     card = cards[0]
     summary = card.meta.get("summary", "")
     assert _CLI_MARKER in summary, (

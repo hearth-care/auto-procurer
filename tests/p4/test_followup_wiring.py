@@ -100,7 +100,7 @@ def test_followup_select_step_returns_ids(monkeypatch):
     monkeypatch.setattr(
         cmod,
         "build_stores",
-        lambda cfg: (_FakeSuppliers([supplier]), _FakeRequests(request)),
+        lambda cfg: (_FakeSuppliers([supplier]), _FakeRequests(request), _FakeRequests(request)),
     )
     monkeypatch.setattr(cmod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
 
@@ -128,7 +128,7 @@ def test_followup_select_step_uses_focus_prefill(monkeypatch):
     monkeypatch.setattr(
         cmod,
         "build_stores",
-        lambda cfg: (_FakeSuppliers([supplier]), _FakeRequests(request)),
+        lambda cfg: (_FakeSuppliers([supplier]), _FakeRequests(request), _FakeRequests(request)),
     )
     monkeypatch.setattr(cmod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
 
@@ -159,6 +159,7 @@ def test_followup_select_step_lists_replied_suppliers_and_previews_body(monkeypa
         "build_stores",
         lambda cfg: (
             _FakeSuppliers([supplier, Supplier(id="s-2", name="No Reply Co")]),
+            _FakeRequests(request),
             _FakeRequests(request),
         ),
     )
@@ -210,7 +211,7 @@ def test_followup_cli_opens_cockpit_with_focus(monkeypatch):
     monkeypatch.setattr(
         request_mod,
         "build_stores",
-        lambda cfg: (_FakeSuppliers([supplier]), _FakeRequests(request)),
+        lambda cfg: (_FakeSuppliers([supplier]), _FakeRequests(request), _FakeRequests(request)),
     )
     monkeypatch.setattr(request_mod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
     monkeypatch.setattr(
@@ -246,7 +247,7 @@ def test_followup_cli_rejects_missing_reply(monkeypatch):
     monkeypatch.setattr(
         request_mod,
         "build_stores",
-        lambda cfg: (_FakeSuppliers([supplier]), _FakeRequests(request)),
+        lambda cfg: (_FakeSuppliers([supplier]), _FakeRequests(request), _FakeRequests(request)),
     )
     monkeypatch.setattr(request_mod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
 
@@ -351,7 +352,9 @@ def test_followup_apply_step_persists_metadata_via_upsert(monkeypatch):
     class _FakeService:
         pass
 
-    monkeypatch.setattr(cmod, "build_stores", lambda cfg: (_FakeSuppliers(), _FakeRequests()))
+    monkeypatch.setattr(
+        cmod, "build_stores", lambda cfg: (_FakeSuppliers(), _FakeRequests(), _FakeRequests())
+    )
     monkeypatch.setattr(cmod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
     monkeypatch.setenv("XSOURCE_GMAIL_TOKEN_PATH", "/nonexistent")
 

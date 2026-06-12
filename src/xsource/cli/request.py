@@ -56,7 +56,7 @@ def sync_all_requests(*, suppliers, requests, sheets, synced_at: dt.datetime) ->
 @request_app.command("sync")
 def sync(request_id: str) -> None:
     cfg = Config.from_env()
-    suppliers, requests = build_stores(cfg)
+    suppliers, requests, _invoices = build_stores(cfg)
     with run_session(trigger="request.sync", args={"request_id": request_id}):
         request = requests.get(request_id)
         if request is None:
@@ -77,7 +77,7 @@ def sync(request_id: str) -> None:
 @request_app.command("sync-all")
 def sync_all() -> None:
     cfg = Config.from_env()
-    suppliers, requests = build_stores(cfg)
+    suppliers, requests, _invoices = build_stores(cfg)
     with run_session(trigger="request.sync-all", args={}):
         report = sync_all_requests(
             suppliers=suppliers,
@@ -126,7 +126,7 @@ def followup(
     from xsource.cli.cockpit import run_cockpit
 
     cfg = Config.from_env()
-    suppliers, requests_ = build_stores(cfg)
+    suppliers, requests_, _invoices = build_stores(cfg)
     request = requests_.get(request_id)
     if request is None:
         raise typer.BadParameter(f"unknown request id {request_id}")
@@ -147,7 +147,7 @@ def reorder(supplier_id: str) -> None:
     from xsource.cli.cockpit import run_cockpit
 
     cfg = Config.from_env()
-    suppliers, _ = build_stores(cfg)
+    suppliers, _requests, _invoices = build_stores(cfg)
     supplier = next((s for s in suppliers.all() if s.id == supplier_id), None)
     if supplier is None:
         raise typer.BadParameter(f"unknown supplier id {supplier_id}")

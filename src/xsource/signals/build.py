@@ -11,7 +11,7 @@ from clonway_cockpit.signals.horizon import compose_horizon, scan_horizon
 from clonway_cockpit.signals.model import Signal
 
 from xsource.config import Config
-from xsource.store.models import Request, Supplier
+from xsource.store.models import InvoiceRecord, Request, Supplier
 from xsource.wiring import build_stores
 
 _WORKER = "xsource"
@@ -246,14 +246,135 @@ def build_store_offline_signals(
     )
 
 
+def _supplier_name(suppliers: Sequence[Supplier], supplier_id: str) -> str:
+    for supplier in suppliers:
+        if supplier.id == supplier_id:
+            return supplier.name
+    return supplier_id
+
+
+def _money(amount_minor: int, currency: str) -> str:
+    return f"{currency} {amount_minor / 100:.2f}"
+
+
+def build_payment_required_signals(
+    invoices: Sequence[InvoiceRecord],
+    suppliers: Sequence[Supplier],
+    *,
+    today: Date,
+    now: datetime,
+) -> tuple[Signal, ...]:
+    out = []
+    for invoice in invoices:
+        if invoice.status not in {"captured", "emitted", "re-emitted"}:
+            continue
+        due_at = _parse_date(invoice.due_date)
+        overdue = due_at is not None and due_at < today
+        supplier_name = _supplier_name(suppliers, invoice.supplier_id)
+        out.append(
+            _signal(
+                kind="payment.required",
+                title=f"Invoice {invoice.invoice_number or invoice.id} - {supplier_name}",
+                detail=f"{_money(invoice.amount_minor, invoice.currency)} - {invoice.description}",
+                level="error" if overdue else "warn",
+                urgency="high" if overdue else "normal",
+                dedup_key=f"xsource|invoice|{invoice.id}",
+                emitted_at=now,
+                due_at=due_at,
+                capability_key="invoice.capture",
+                focus=invoice.id,
+                source_id=invoice.id,
+            )
+        )
+    return tuple(out)
+
+
+def build_invoice_variance_signals(
+    invoices: Sequence[InvoiceRecord],
+    suppliers: Sequence[Supplier],
+    *,
+    today: Date,
+    now: datetime,
+) -> tuple[Signal, ...]:
+    out = []
+    for invoice in invoices:
+        variance = invoice.handoff.get("variance")
+        if (
+            not isinstance(variance, dict)
+            or invoice.handoff.get("variance_resolved_at")
+            or invoice.status in {"settled", "written_off"}
+        ):
+            continue
+        quoted_minor = variance.get("quoted_minor")
+        invoiced_minor = variance.get("invoiced_minor")
+        if not isinstance(quoted_minor, int) or not isinstance(invoiced_minor, int):
+            continue
+        supplier_name = _supplier_name(suppliers, invoice.supplier_id)
+        out.append(
+            _signal(
+                kind="action.required",
+                title=f"Review invoice variance {invoice.invoice_number or invoice.id}",
+                detail=(
+                    f"{supplier_name}: quoted {_money(quoted_minor, invoice.currency)}, "
+                    f"invoiced {_money(invoiced_minor, invoice.currency)} for {invoice.description}"
+                ),
+                level="warn",
+                urgency="high",
+                dedup_key=f"xsource|invoice-variance|{invoice.id}",
+                emitted_at=now,
+                due_at=today,
+                capability_key="invoice.capture",
+                focus=invoice.id,
+                source_id=invoice.id,
+            )
+        )
+    return tuple(out)
+
+
+def build_rejected_invoice_signals(
+    invoices: Sequence[InvoiceRecord],
+    suppliers: Sequence[Supplier],
+    *,
+    today: Date,
+    now: datetime,
+) -> tuple[Signal, ...]:
+    out = []
+    for invoice in invoices:
+        if invoice.status != "rejected":
+            continue
+        supplier_name = _supplier_name(suppliers, invoice.supplier_id)
+        reason = str(invoice.handoff.get("rejection_reason") or "consumer rejected the handoff")
+        out.append(
+            _signal(
+                kind="action.required",
+                title=f"Fix rejected invoice {invoice.invoice_number or invoice.id}",
+                detail=(
+                    f"{supplier_name}: {reason}. "
+                    f"Correct and re-emit with `xsource invoice reemit {invoice.id}`, "
+                    f"or `xsource invoice write-off {invoice.id}`."
+                ),
+                level="warn",
+                urgency="high",
+                dedup_key=f"xsource|invoice-rejected|{invoice.id}",
+                emitted_at=now,
+                due_at=today,
+                capability_key="invoice.capture",
+                focus=invoice.id,
+                source_id=invoice.id,
+            )
+        )
+    return tuple(out)
+
+
 @scan_horizon
 def scan_xsource_horizon(*, today: Date, now: datetime) -> Sequence[Signal]:
     cfg = Config.from_env()
     with contextlib.suppress(Exception):
-        suppliers, requests = build_stores(cfg)
+        suppliers, requests, invoices = build_stores(cfg)
         request_records = requests.all()
         supplier_records = suppliers.all()
-        store_offline = suppliers.offline or requests.offline
+        invoice_records = invoices.all()
+        store_offline = suppliers.offline or requests.offline or invoices.offline
         return (
             *build_chase_quote_signals(
                 request_records,
@@ -270,6 +391,24 @@ def scan_xsource_horizon(*, today: Date, now: datetime) -> Sequence[Signal]:
                 today=today,
                 now=now,
                 store_offline=store_offline,
+            ),
+            *build_payment_required_signals(
+                invoice_records,
+                supplier_records,
+                today=today,
+                now=now,
+            ),
+            *build_invoice_variance_signals(
+                invoice_records,
+                supplier_records,
+                today=today,
+                now=now,
+            ),
+            *build_rejected_invoice_signals(
+                invoice_records,
+                supplier_records,
+                today=today,
+                now=now,
             ),
         )
     return ()

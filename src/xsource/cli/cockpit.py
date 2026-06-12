@@ -25,6 +25,7 @@ from rich.console import Console, RenderableType
 from xsource.book.search import find_matches
 from xsource.budget import Budget
 from xsource.config import Config
+from xsource.invoices.capture import validate_iso_date
 from xsource.research.candidates import Candidate
 from xsource.research.pipeline import RunCaps, run_research
 from xsource.research.triage import Triage, run_triage
@@ -55,24 +56,31 @@ _REQUEST_OUTREACH_BLAST = BlastRadius(
     reversible="Drafts can be deleted from Gmail; outreach metadata can be removed from the request record.",
 )
 
+_INVOICE_CAPTURE_BLAST = BlastRadius(
+    summary="Records one supplier invoice in the xsource store and links it to supplier/request history. It does not pay money.",
+    reversible="Invoice and price-history rows can be corrected by operator edit.",
+)
+
 
 def _status() -> dict:
     cfg = Config.from_env()
     suppliers: SyncedStore | None = None
     requests_: SyncedStore | None = None
+    invoices: SyncedStore | None = None
     with contextlib.suppress(Exception):
-        suppliers, requests_ = build_stores(cfg)
+        suppliers, requests_, invoices = build_stores(cfg)
     budget = build_budget(cfg, dt.date.today())
-    return {"cfg": cfg, "suppliers": suppliers, "requests": requests_, "budget": budget}
+    return {
+        "cfg": cfg,
+        "suppliers": suppliers,
+        "requests": requests_,
+        "invoices": invoices,
+        "budget": budget,
+    }
 
 
-def _store_online(suppliers, requests_) -> bool:
-    return (
-        suppliers is not None
-        and requests_ is not None
-        and not suppliers.offline
-        and not requests_.offline
-    )
+def _store_online(*stores) -> bool:
+    return bool(stores) and all(store is not None and not store.offline for store in stores)
 
 
 def _preconditions(ctx: WizardContext) -> list[Precondition]:
@@ -80,6 +88,7 @@ def _preconditions(ctx: WizardContext) -> list[Precondition]:
     cfg: Config = report["cfg"]
     suppliers = report["suppliers"]
     requests_ = report["requests"]
+    invoices = report["invoices"]
     budget: Budget = report["budget"]
     sheets_token = os.environ.get("XSOURCE_SHEETS_TOKEN_PATH", "")
     return [
@@ -100,9 +109,9 @@ def _preconditions(ctx: WizardContext) -> list[Precondition]:
         ),
         Precondition(
             "Store reachable",
-            _store_online(suppliers, requests_),
+            _store_online(suppliers, requests_, invoices),
             "GCS store available"
-            if _store_online(suppliers, requests_)
+            if _store_online(suppliers, requests_, invoices)
             else "offline read-only cache",
         ),
         Precondition("Research budget", budget.allow_new_run(), budget.level()),
@@ -114,6 +123,7 @@ def _outreach_preconditions(ctx: WizardContext) -> list[Precondition]:
     report = _status()
     suppliers = report["suppliers"]
     requests_ = report["requests"]
+    invoices = report["invoices"]
     gmail_token = os.environ.get("XSOURCE_GMAIL_TOKEN_PATH", "")
     request_records = requests_.all() if requests_ is not None else []
     open_requests = [r for r in request_records if getattr(r, "status", "") == "open"]
@@ -130,15 +140,37 @@ def _outreach_preconditions(ctx: WizardContext) -> list[Precondition]:
         ),
         Precondition(
             "Store reachable",
-            _store_online(suppliers, requests_),
+            _store_online(suppliers, requests_, invoices),
             "GCS store available"
-            if _store_online(suppliers, requests_)
+            if _store_online(suppliers, requests_, invoices)
             else "offline read-only cache",
         ),
         Precondition(
             "Open request",
             bool(open_requests),
             f"{len(open_requests)} open" if open_requests else "none",
+        ),
+    ]
+
+
+def _invoice_preconditions(ctx: WizardContext) -> list[Precondition]:
+    report = _status()
+    suppliers = report["suppliers"]
+    requests_ = report["requests"]
+    invoices = report["invoices"]
+    supplier_records = suppliers.all() if suppliers is not None else []
+    return [
+        Precondition(
+            "Store reachable",
+            _store_online(suppliers, requests_, invoices),
+            "GCS store available"
+            if _store_online(suppliers, requests_, invoices)
+            else "offline read-only cache",
+        ),
+        Precondition(
+            "Supplier available",
+            bool(supplier_records),
+            f"{len(supplier_records)} supplier(s)" if supplier_records else "none",
         ),
     ]
 
@@ -243,7 +275,7 @@ def _triage_step(ctx: WizardContext, bag: dict) -> StepResult:
 
 def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
     cfg = Config.from_env()
-    suppliers, _requests = build_stores(cfg)
+    suppliers, _requests, _invoices = build_stores(cfg)
     triage_dict = bag["triage"]
     triage = Triage(
         category=triage_dict["category"],
@@ -295,7 +327,7 @@ def _review_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     from xsource.walks.request_new import apply_request
 
     cfg = Config.from_env()
-    suppliers, requests_ = build_stores(cfg)
+    suppliers, requests_, _invoices = build_stores(cfg)
 
     def create_sheet(title: str, values: list[list[str]]) -> tuple[str, str]:
         creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_SHEETS_TOKEN_PATH"])
@@ -359,7 +391,7 @@ def _outreach_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     from xsource.outreach.drafts import create_request_drafts
 
     cfg = Config.from_env()
-    suppliers, requests_ = build_stores(cfg)
+    suppliers, requests_, _invoices = build_stores(cfg)
     creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_GMAIL_TOKEN_PATH"])
     service = build("gmail", "v1", credentials=creds, cache_discovery=False)
     report = create_request_drafts(
@@ -489,7 +521,7 @@ def _followup_select_step(ctx: WizardContext, bag: dict) -> StepResult:
         return StepResult(ok=False, message="No request id entered.")
 
     cfg = Config.from_env()
-    suppliers, requests_ = build_stores(cfg)
+    suppliers, requests_, _invoices = build_stores(cfg)
     request = requests_.get(request_id)
     if request is None:
         return StepResult(ok=False, message=f"Unknown request {request_id}.")
@@ -541,6 +573,54 @@ def _followup_select_step(ctx: WizardContext, bag: dict) -> StepResult:
     )
 
 
+def _invoice_details_step(ctx: WizardContext, bag: dict) -> StepResult:
+    input_fn = ctx.input_fn
+    if input_fn is None:
+        return StepResult(ok=False, message="No input available.")
+    supplier_id = input_fn("Supplier id: ").strip()
+    amount_text = input_fn("Amount minor: ").strip()
+    invoice_date = input_fn("Invoice date: ").strip()
+    description = input_fn("Description: ").strip()
+    if not supplier_id or not amount_text or not invoice_date or not description:
+        return StepResult(ok=False, message="Missing invoice details.")
+    try:
+        amount_minor = int(amount_text)
+    except ValueError:
+        return StepResult(
+            ok=False,
+            message=f"Invalid amount {amount_text!r}: expected a whole number in minor units.",
+        )
+    if amount_minor <= 0:
+        return StepResult(
+            ok=False,
+            message=f"Amount must be a positive integer in minor units, got {amount_minor}.",
+        )
+    try:
+        validate_iso_date(invoice_date, "invoice_date")
+    except ValueError as exc:
+        return StepResult(ok=False, message=str(exc))
+    request_id = input_fn("Request id (optional): ").strip()
+    invoice_number = input_fn("Invoice number (optional): ").strip() or None
+    due_date = input_fn("Due date (optional): ").strip() or None
+    if due_date:
+        try:
+            validate_iso_date(due_date, "due_date")
+        except ValueError as exc:
+            return StepResult(ok=False, message=str(exc))
+    return StepResult(
+        ok=True,
+        data={
+            "supplier_id": supplier_id,
+            "amount_minor": amount_minor,
+            "invoice_date": invoice_date,
+            "description": description,
+            "request_id": request_id,
+            "invoice_number": invoice_number,
+            "due_date": due_date,
+        },
+    )
+
+
 def _followup_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     """Preview and confirm the follow-up draft, then create it."""
     if not confirm_apply(
@@ -563,7 +643,7 @@ def _followup_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     supplier = bag.get("supplier")
     requests_ = None
     if request is None or supplier is None:
-        suppliers, requests_ = build_stores(cfg)
+        suppliers, requests_, _invoices = build_stores(cfg)
         request = requests_.get(bag["request_id"])
         if request is None:
             return StepResult(ok=False, message=f"Unknown request {bag['request_id']}.")
@@ -571,7 +651,7 @@ def _followup_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
         if supplier is None:
             return StepResult(ok=False, message=f"Unknown supplier {bag['supplier_id']}.")
     else:
-        _, requests_ = build_stores(cfg)
+        _, requests_, _invoices = build_stores(cfg)
 
     creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_GMAIL_TOKEN_PATH"])
     service = build("gmail", "v1", credentials=creds, cache_discovery=False)
@@ -602,6 +682,52 @@ _request_followup_handler = make_walk_handler(
 )
 
 
+def _invoice_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
+    if not confirm_apply(
+        ctx,
+        prompt="Capture invoice?",
+        equivalent_cli="xsource invoice add",
+    ):
+        return StepResult(ok=False, message="Apply declined.")
+    from xsource.invoices.capture import capture_invoice
+
+    cfg = Config.from_env()
+    suppliers, requests_, invoices = build_stores(cfg)
+    try:
+        report = capture_invoice(
+            suppliers=suppliers,
+            requests=requests_,
+            invoices=invoices,
+            request_id=bag.get("request_id") or "",
+            supplier_id=bag["supplier_id"],
+            amount_minor=bag["amount_minor"],
+            invoice_number=bag.get("invoice_number"),
+            invoice_date=bag["invoice_date"],
+            due_date=bag.get("due_date"),
+            description=bag["description"],
+            source="manual",
+        )
+    except ValueError as exc:
+        return StepResult(ok=False, message=str(exc))
+    return StepResult(
+        ok=True,
+        data={"summary": f"Captured {report.invoice_id}.", "warnings": report.warnings},
+    )
+
+
+_invoice_capture_handler = make_walk_handler(
+    title="Capture supplier invoice",
+    steps=[
+        Step(label="Invoice details", run=_invoice_details_step),
+        Step(label="Review and apply", run=_invoice_apply_step),
+    ],
+    blast_radius=_INVOICE_CAPTURE_BLAST,
+    preconditions_fn=_invoice_preconditions,
+    equivalent_cli="xsource invoice add",
+    total=2,
+)
+
+
 def _reorder_proposal_step(ctx: WizardContext, bag: dict) -> StepResult:
     """Show the reorder proposal for a recurring supplier and capture the decision."""
     from xsource.p4.reorder import build_reorder_proposal
@@ -614,7 +740,7 @@ def _reorder_proposal_step(ctx: WizardContext, bag: dict) -> StepResult:
         return StepResult(ok=False, message="No supplier id provided.")
 
     cfg = Config.from_env()
-    suppliers, requests_ = build_stores(cfg)
+    suppliers, requests_, _invoices = build_stores(cfg)
     supplier = next((s for s in suppliers.all() if s.id == supplier_id), None)
     if supplier is None:
         return StepResult(ok=False, message=f"Unknown supplier {supplier_id}.")
@@ -807,6 +933,17 @@ def register_all() -> None:
             blast_radius=_REORDER_BLAST,
         )
     )
+    register_capability(
+        CapabilitySpec(
+            key="invoice.capture",
+            shelf="B",
+            title="Capture invoice",
+            summary="Record a supplier invoice for AP handoff; never pays money.",
+            equivalent_cli="xsource invoice add",
+            run=_invoice_capture_handler,
+            blast_radius=_INVOICE_CAPTURE_BLAST,
+        )
+    )
     for key, shelf, title, summary, cli in (
         (
             "request.list",
@@ -886,10 +1023,15 @@ def capture_state() -> CockpitState:
     cfg: Config = report["cfg"]
     suppliers = report["suppliers"]
     requests_ = report["requests"]
+    invoices = report["invoices"]
     budget: Budget = report["budget"]
     supplier_count = len(suppliers.all()) if suppliers is not None else 0
     request_records = requests_.all() if requests_ is not None else []
+    invoice_records = invoices.all() if invoices is not None else []
     open_requests = [r for r in request_records if getattr(r, "status", "") == "open"]
+    invoice_attention = [
+        i for i in invoice_records if getattr(i, "status", "") in {"captured", "rejected"}
+    ]
     budget_level = budget.level()
 
     needs = []
@@ -921,7 +1063,7 @@ def capture_state() -> CockpitState:
             )
         )
 
-    store_online = _store_online(suppliers, requests_)
+    store_online = _store_online(suppliers, requests_, invoices)
 
     pending_review = sum(
         1
@@ -937,6 +1079,12 @@ def capture_state() -> CockpitState:
             status=str(len(open_requests)),
             detail="active",
             level="warn" if open_requests else "ok",
+        ),
+        Pill(
+            label="invoices",
+            status=str(len(invoice_attention)),
+            detail="need attention",
+            level="warn" if invoice_attention else "ok",
         ),
         Pill(
             label="research budget",
@@ -999,9 +1147,10 @@ def doctor_build_probes(report: object) -> list[Probe]:
     cfg: Config = report["cfg"]  # type: ignore[index]
     suppliers = report["suppliers"]  # type: ignore[index]
     requests_ = report["requests"]  # type: ignore[index]
+    invoices = report["invoices"]  # type: ignore[index]
     budget: Budget = report["budget"]  # type: ignore[index]
     sheets_token = os.environ.get("XSOURCE_SHEETS_TOKEN_PATH", "")
-    store_online = _store_online(suppliers, requests_)
+    store_online = _store_online(suppliers, requests_, invoices)
     return [
         Probe(
             name="Google Maps key",

@@ -52,7 +52,7 @@ def _sheet_client() -> SheetClient:
 
 
 def _process_factory(cfg: Config):
-    suppliers, requests = build_stores(cfg)
+    suppliers, requests, _invoices = build_stores(cfg)
     own_addresses = {
         item.strip().lower()
         for item in os.environ.get("XSOURCE_OWN_EMAILS", "").split(",")
@@ -148,7 +148,7 @@ def run(
 @watcher_app.command("status")
 def status() -> None:
     cfg = Config.from_env()
-    _suppliers, requests = build_stores(cfg)
+    _suppliers, requests, _invoices = build_stores(cfg)
     open_requests = [request for request in requests.all() if request.status == "open"]
     typer.echo(f"open_requests={len(open_requests)}")
     for request in open_requests:

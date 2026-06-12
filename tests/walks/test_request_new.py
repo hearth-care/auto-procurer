@@ -117,7 +117,7 @@ def test_cockpit_steps_call_triage_and_research_pipeline(monkeypatch):
 
     monkeypatch.setattr(cockpit, "run_triage", fake_run_triage)
     monkeypatch.setattr(cockpit, "_AnthropicStructuredGateway", lambda chain=None: object())
-    monkeypatch.setattr(cockpit, "build_stores", lambda cfg: (FakeSuppliers(), object()))
+    monkeypatch.setattr(cockpit, "build_stores", lambda cfg: (FakeSuppliers(), object(), object()))
     monkeypatch.setattr(
         cockpit,
         "build_research_fns",

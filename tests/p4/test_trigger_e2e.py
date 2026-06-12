@@ -105,7 +105,9 @@ def test_trigger_walk_email_payload_creates_request(monkeypatch, tmp_path):
 
     monkeypatch.setattr("xsource.cli.cockpit.run_triage", lambda *a, **k: _FakeTriage())
     monkeypatch.setattr("xsource.cli.cockpit.run_research", lambda **k: fake_res._result)
-    monkeypatch.setattr("xsource.cli.cockpit.build_stores", lambda cfg: (_Store(), _Store()))
+    monkeypatch.setattr(
+        "xsource.cli.cockpit.build_stores", lambda cfg: (_Store(), _Store(), _Store())
+    )
     monkeypatch.setattr(
         "xsource.cli.cockpit.build_research_fns",
         lambda cfg: {
@@ -121,7 +123,7 @@ def test_trigger_walk_email_payload_creates_request(monkeypatch, tmp_path):
     requests_store = _Store()
 
     def fake_build_stores(cfg):
-        return suppliers_store, requests_store
+        return suppliers_store, requests_store, _Store()
 
     monkeypatch.setattr("xsource.cli.cockpit.build_stores", fake_build_stores)
 

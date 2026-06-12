@@ -13,14 +13,20 @@ from datetime import UTC, date, datetime
 from clonway_cockpit.signals.horizon import ScanHorizon, is_scan_horizon
 from clonway_cockpit.signals.model import Signal
 
+from xsource.invoices.capture import capture_invoice
 from xsource.signals.build import (
     build_chase_quote_signals,
+    build_invoice_variance_signals,
+    build_payment_required_signals,
     build_recurring_service_signals,
+    build_rejected_invoice_signals,
+    build_store_offline_signals,
     build_watcher_health_signals,
     build_xsource_signals,
     scan_xsource_horizon,
 )
-from xsource.store.models import Request, ShortlistEntry, Supplier
+from xsource.store.jsonl import JsonlStore
+from xsource.store.models import InvoiceRecord, Request, ShortlistEntry, Supplier
 
 _NOW = datetime(2026, 6, 1, 7, 0, tzinfo=UTC)
 _TODAY = _NOW.date()
@@ -130,8 +136,6 @@ def test_watcher_health_signal_when_open_thread_poll_is_stale() -> None:
 
 
 def test_build_store_offline_signals_emits_when_offline_with_open_requests():
-    from xsource.signals.build import build_store_offline_signals
-
     requests = [
         Request(
             id="r-1",
@@ -148,8 +152,6 @@ def test_build_store_offline_signals_emits_when_offline_with_open_requests():
 
 
 def test_build_store_offline_signals_silent_when_online():
-    from xsource.signals.build import build_store_offline_signals
-
     requests = [
         Request(
             id="r-1",
@@ -163,7 +165,152 @@ def test_build_store_offline_signals_silent_when_online():
 
 
 def test_build_store_offline_signals_silent_when_no_open_requests():
-    from xsource.signals.build import build_store_offline_signals
-
     signals = build_store_offline_signals([], today=_TODAY, now=_NOW, store_offline=True)
     assert signals == ()
+
+
+def test_payment_required_signal_for_emittable_invoice() -> None:
+    supplier = Supplier(id="s-0017", name="Smith Heating")
+    invoice = InvoiceRecord(
+        id="i-0001",
+        request_id="r-0001",
+        supplier_id="s-0017",
+        amount_minor=12500,
+        invoice_number="INV-100",
+        invoice_date="2026-05-31",
+        due_date="2026-06-03",
+        description="Boiler repair",
+        source="manual",
+        status="captured",
+    )
+
+    signals = build_payment_required_signals([invoice], [supplier], today=_TODAY, now=_NOW)
+
+    assert len(signals) == 1
+    assert signals[0].kind == "payment.required"
+    assert signals[0].title == "Invoice INV-100 - Smith Heating"
+    assert signals[0].detail == "GBP 125.00 - Boiler repair"
+    assert signals[0].level == "warn"
+    assert signals[0].urgency == "normal"
+    assert signals[0].dedup_key == "xsource|invoice|i-0001"
+    assert signals[0].source_id == "i-0001"
+    assert signals[0].source_ref == "i-0001"
+    assert signals[0].due_at == date(2026, 6, 3)
+
+
+def test_payment_required_signal_escalates_overdue_and_skips_acknowledged() -> None:
+    supplier = Supplier(id="s-0017", name="Smith Heating")
+    overdue = InvoiceRecord(
+        id="i-0001",
+        request_id="",
+        supplier_id="s-0017",
+        amount_minor=12500,
+        invoice_date="2026-05-31",
+        due_date="2026-05-31",
+        description="Boiler repair",
+        source="manual",
+        status="emitted",
+    )
+    acknowledged = InvoiceRecord(
+        id="i-0002",
+        request_id="",
+        supplier_id="s-0017",
+        amount_minor=12500,
+        invoice_date="2026-05-31",
+        due_date="2026-06-03",
+        description="Boiler repair",
+        source="manual",
+        status="acknowledged",
+    )
+
+    signals = build_payment_required_signals(
+        [overdue, acknowledged], [supplier], today=_TODAY, now=_NOW
+    )
+
+    assert len(signals) == 1
+    assert signals[0].source_id == "i-0001"
+    assert signals[0].level == "error"
+    assert signals[0].urgency == "high"
+
+
+def test_invoice_variance_signal_uses_captured_invoice_state(tmp_path) -> None:
+    suppliers = JsonlStore(tmp_path / "suppliers.jsonl", Supplier)
+    requests = JsonlStore(tmp_path / "requests.jsonl", Request)
+    invoices = JsonlStore(tmp_path / "invoices.jsonl", InvoiceRecord)
+    suppliers.upsert(
+        Supplier(
+            id="s-0017",
+            name="Smith Heating",
+            price_history=[
+                {
+                    "request_id": "r-0042",
+                    "date": "2026-05-31",
+                    "amount_minor": 10000,
+                    "outcome": "used",
+                }
+            ],
+        )
+    )
+    requests.upsert(
+        Request(
+            id="r-0042",
+            created_at="2026-05-31T12:00:00+00:00",
+            raw_need="boiler repair",
+            chosen_supplier_id="s-0017",
+        )
+    )
+
+    report = capture_invoice(
+        suppliers=suppliers,
+        requests=requests,
+        invoices=invoices,
+        request_id="r-0042",
+        supplier_id="s-0017",
+        amount_minor=12000,
+        invoice_number="INV-120",
+        invoice_date="2026-06-01",
+        due_date="2026-06-10",
+        description="Boiler repair",
+        source="manual",
+        now="2026-06-01T07:00:00+00:00",
+    )
+
+    signals = build_invoice_variance_signals(
+        invoices.all(), suppliers.all(), today=_TODAY, now=_NOW
+    )
+
+    assert report.variance is not None
+    assert len(signals) == 1
+    assert signals[0].kind == "action.required"
+    assert signals[0].title == "Review invoice variance INV-120"
+    assert "Smith Heating" in signals[0].detail
+    assert "quoted GBP 100.00" in signals[0].detail
+    assert "invoiced GBP 120.00" in signals[0].detail
+    assert signals[0].dedup_key == f"xsource|invoice-variance|{report.invoice_id}"
+    assert signals[0].source_id == report.invoice_id
+    assert signals[0].due_at == _TODAY
+
+
+def test_rejected_invoice_signal_is_operator_visible() -> None:
+    supplier = Supplier(id="s-0017", name="Smith Heating")
+    invoice = InvoiceRecord(
+        id="i-0001",
+        request_id="",
+        supplier_id="s-0017",
+        amount_minor=12500,
+        invoice_date="2026-05-31",
+        description="Boiler repair",
+        source="manual",
+        status="rejected",
+        handoff={"rejection_reason": "missing VAT number"},
+    )
+
+    signals = build_rejected_invoice_signals([invoice], [supplier], today=_TODAY, now=_NOW)
+
+    assert len(signals) == 1
+    assert signals[0].kind == "action.required"
+    assert signals[0].dedup_key == "xsource|invoice-rejected|i-0001"
+    assert "missing VAT number" in signals[0].detail
+    # The CTA must point at a real recovery path, not a dead capture-new walk.
+    assert "invoice reemit i-0001" in signals[0].detail
+    assert "invoice write-off i-0001" in signals[0].detail

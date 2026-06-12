@@ -1,5 +1,7 @@
-from xsource.store.models import Supplier
+from xsource.config import Config
+from xsource.store.models import InvoiceRecord, Supplier
 from xsource.store.remote import SyncedStore
+from xsource.wiring import build_stores
 
 
 class FakeBlob:
@@ -31,3 +33,32 @@ def test_pull_then_upsert_pushes(tmp_path):
     assert '"s-1"' in blob.data
     other = SyncedStore(tmp_path / "other", "suppliers.jsonl", Supplier, blob)
     assert other.get("s-1").name == "A"
+
+
+def test_build_stores_includes_invoice_store(tmp_path, monkeypatch):
+    monkeypatch.setattr("xsource.wiring.make_blob", lambda bucket, path: None)
+    cfg = Config(
+        home_postcode=None,
+        default_radius_miles=15,
+        shortlist_n=5,
+        max_places_calls=10,
+        max_web_searches=8,
+        monthly_budget_gbp=10.0,
+        chase_after_days=3,
+        poll_seconds=60,
+        max_backoff_seconds=300,
+        breaker_threshold=10,
+        drive_folder_id=None,
+        staff_share_group=None,
+        state_dir=str(tmp_path),
+        model_chain=["claude-sonnet-4-6"],
+        fleet_bucket="fleet-state",
+        state_prefix="state/xsource",
+        operator_display_name="Test Operator",
+    )
+    suppliers, requests, invoices = build_stores(cfg)
+
+    assert suppliers.path.name == "suppliers.jsonl"
+    assert requests.path.name == "requests.jsonl"
+    assert invoices.path.name == "invoices.jsonl"
+    assert invoices._store.model is InvoiceRecord
