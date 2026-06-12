@@ -471,7 +471,20 @@ def _followup_select_step(ctx: WizardContext, bag: dict) -> StepResult:
     """Select the request and supplier for a follow-up draft."""
     from xsource.p4.followup import build_followup_draft
 
-    request_id = ctx.input_fn("Request id: ").strip() if ctx.input_fn else ""
+    # Focus format: "request.followup:{request_id}:{supplier_id}" (pre-filled by CLI)
+    _prefilled_request_id = ""
+    _prefilled_supplier_id = ""
+    focus = ctx.focus or ""
+    if focus.startswith("request.followup:"):
+        remainder = focus[len("request.followup:") :]
+        if ":" in remainder:
+            _prefilled_request_id, _prefilled_supplier_id = remainder.split(":", 1)
+        else:
+            _prefilled_request_id = remainder
+
+    request_id = _prefilled_request_id or (
+        ctx.input_fn("Request id: ").strip() if ctx.input_fn else ""
+    )
     if not request_id:
         return StepResult(ok=False, message="No request id entered.")
 
@@ -483,9 +496,7 @@ def _followup_select_step(ctx: WizardContext, bag: dict) -> StepResult:
 
     suppliers_by_id = {supplier.id: supplier for supplier in suppliers.all()}
     replied_entries = [
-        entry
-        for entry in request.shortlist
-        if entry.reply and entry.supplier_id in suppliers_by_id
+        entry for entry in request.shortlist if entry.reply and entry.supplier_id in suppliers_by_id
     ]
     if not replied_entries:
         return StepResult(ok=False, message=f"No replied shortlist entries for {request_id}.")
@@ -496,7 +507,9 @@ def _followup_select_step(ctx: WizardContext, bag: dict) -> StepResult:
         summary = entry.reply.get("summary") or "reply recorded"
         ctx.console.print(f"  {entry.rank}. {supplier.id} — {supplier.name}: {summary}")
 
-    supplier_id = ctx.input_fn("Supplier id: ").strip() if ctx.input_fn else ""
+    supplier_id = _prefilled_supplier_id or (
+        ctx.input_fn("Supplier id: ").strip() if ctx.input_fn else ""
+    )
     if not supplier_id:
         return StepResult(ok=False, message="No supplier id entered.")
     supplier = suppliers_by_id.get(supplier_id)
@@ -628,6 +641,7 @@ def _reorder_proposal_step(ctx: WizardContext, bag: dict) -> StepResult:
         "radius_miles": cfg.default_radius_miles,
         "needed_by": None,
         "reorder_supplier_id": supplier_id,
+        "budget_hint": proposal.budget_hint,
     }
     return StepResult(
         ok=True,

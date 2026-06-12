@@ -296,3 +296,64 @@ def test_reorder_retender_includes_incumbent_on_category_mismatch(monkeypatch):
     shortlist_ids = [c.extra.get("supplier_id") for c in result.data["result"].shortlist]
     assert "s-plumber-1" in shortlist_ids, f"Incumbent missing from shortlist: {shortlist_ids}"
     assert shortlist_ids[0] == "s-plumber-1", "Incumbent should be first in shortlist"
+
+
+# ---------------------------------------------------------------------------
+# reorder proposal step: budget_hint propagated into constraints
+# ---------------------------------------------------------------------------
+
+
+def test_reorder_proposal_step_includes_budget_hint_in_constraints(monkeypatch):
+    """budget_hint from the proposal must appear in the constraints passed to _review_apply_step."""
+    from clonway_cockpit.registry import WizardContext
+    from rich.console import Console
+
+    from xsource.cli import cockpit as cmod
+    from xsource.store.models import Supplier
+
+    supplier = Supplier(
+        id="s-1",
+        name="Smith Heating",
+        categories=["heating"],
+        last_used="2025-06-15",
+        recurs_every_months=12,
+        price_history=[{"amount": 180, "currency": "GBP", "outcome": "used"}],
+    )
+
+    class _FakeSuppliers:
+        offline = False
+
+        def all(self):
+            return [supplier]
+
+    class _FakeRequests:
+        offline = False
+
+        def all(self):
+            return []
+
+    monkeypatch.setattr(cmod, "build_stores", lambda cfg: (_FakeSuppliers(), _FakeRequests()))
+    monkeypatch.setattr(cmod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
+
+    ctx = WizardContext(
+        state={},
+        client=None,
+        console=Console(quiet=True),
+        input_fn=lambda *a, **k: "a",  # "a" = reorder (incumbent only)
+        confirm_fn=lambda _p: True,
+        read_key=lambda: "a",
+        focus="request.reorder:s-1",
+    )
+
+    result = cmod._reorder_proposal_step(ctx, {})
+
+    assert result.ok, result.message
+    constraints = result.data["constraints"]
+    assert "budget_hint" in constraints, f"budget_hint missing from constraints: {constraints}"
+    assert constraints["budget_hint"]["sample_size"] == 1
+    assert constraints["budget_hint"]["median"] == 180
+
+
+class _FakeCfg:
+    operator_display_name = "Jane"
+    default_radius_miles = 15

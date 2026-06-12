@@ -119,6 +119,36 @@ def test_followup_select_step_returns_ids(monkeypatch):
     assert result.data["supplier_id"] == "s-1"
 
 
+def test_followup_select_step_uses_focus_prefill(monkeypatch):
+    """When focus="request.followup:{req}:{sup}" is set, no interactive input is needed."""
+    from xsource.cli import cockpit as cmod
+
+    request = _request_with_replies()
+    supplier = Supplier(id="s-1", name="Tree Co", email="quotes@example.com")
+    monkeypatch.setattr(
+        cmod,
+        "build_stores",
+        lambda cfg: (_FakeSuppliers([supplier]), _FakeRequests(request)),
+    )
+    monkeypatch.setattr(cmod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
+
+    ctx = WizardContext(
+        state={},
+        client=None,
+        console=Console(quiet=True),
+        input_fn=lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("input_fn must not be called when focus pre-fills IDs")
+        ),
+        confirm_fn=lambda _p: False,
+        read_key=lambda: "\x1b",
+        focus="request.followup:r-0042:s-1",
+    )
+    result = _followup_select_step(ctx, {})
+    assert result.ok, result.message
+    assert result.data["request_id"] == "r-0042"
+    assert result.data["supplier_id"] == "s-1"
+
+
 def test_followup_select_step_lists_replied_suppliers_and_previews_body(monkeypatch):
     from xsource.cli import cockpit as cmod
 
@@ -166,14 +196,16 @@ def test_followup_apply_step_decline_creates_no_draft():
     assert "declined" in result.message.lower()
 
 
-def test_followup_cli_decline_creates_no_draft(monkeypatch):
-    import xsource.outreach.client as out_mod
+def test_followup_cli_opens_cockpit_with_focus(monkeypatch):
+    """CLI validates inputs then hands off to run_cockpit — never creates a draft directly."""
+    import xsource.cli.cockpit as cockpit_mod
     import xsource.p4.followup as followup_mod
     from xsource.cli import request as request_mod
 
     request = _request_with_replies()
     supplier = Supplier(id="s-1", name="Tree Co", email="quotes@example.com")
-    calls: list[dict] = []
+    cockpit_calls: list[str] = []
+    draft_calls: list[dict] = []
 
     monkeypatch.setattr(
         request_mod,
@@ -184,29 +216,43 @@ def test_followup_cli_decline_creates_no_draft(monkeypatch):
     monkeypatch.setattr(
         followup_mod,
         "create_followup_draft",
-        lambda *a, **k: calls.append({"args": a, "kwargs": k}) or {"draft_id": "fd-1"},
+        lambda *a, **k: draft_calls.append({}) or {"draft_id": "fd-1"},
     )
-    monkeypatch.setattr(out_mod, "SafeOutreachClient", lambda svc: object())
-    monkeypatch.setenv("XSOURCE_GMAIL_TOKEN_PATH", "/nonexistent")
-
-    import importlib
-
-    google_oauth2 = importlib.import_module("google.oauth2.credentials")
     monkeypatch.setattr(
-        google_oauth2.Credentials,
-        "from_authorized_user_file",
-        staticmethod(lambda path: None),
+        cockpit_mod,
+        "run_cockpit",
+        lambda **kw: cockpit_calls.append(kw.get("focus", "")),
     )
 
-    import googleapiclient.discovery as disco
+    result = CliRunner().invoke(app, ["request", "followup", "r-0042", "s-1"])
 
-    monkeypatch.setattr(disco, "build", lambda *a, **k: object())
+    assert result.exit_code == 0, result.output
+    assert draft_calls == [], "CLI must not create drafts directly"
+    assert cockpit_calls == ["request.followup:r-0042:s-1"]
 
-    result = CliRunner().invoke(app, ["request", "followup", "r-0042", "s-1"], input="n\n")
 
-    assert result.exit_code == 0
-    assert calls == []
-    assert "declined" in result.stdout.lower()
+def test_followup_cli_rejects_missing_reply(monkeypatch):
+    """CLI raises BadParameter when supplier has no recorded reply."""
+    from xsource.cli import request as request_mod
+
+    request = Request(
+        id="r-0042",
+        created_at="2026-06-10T15:58:00+00:00",
+        raw_need="tree chipping",
+        shortlist=[ShortlistEntry(supplier_id="s-1", rank=1)],  # no reply
+    )
+    supplier = Supplier(id="s-1", name="Tree Co", email="quotes@example.com")
+
+    monkeypatch.setattr(
+        request_mod,
+        "build_stores",
+        lambda cfg: (_FakeSuppliers([supplier]), _FakeRequests(request)),
+    )
+    monkeypatch.setattr(request_mod.Config, "from_env", classmethod(lambda cls: _FakeCfg()))
+
+    result = CliRunner().invoke(app, ["request", "followup", "r-0042", "s-1"])
+
+    assert result.exit_code != 0
 
 
 # ---------------------------------------------------------------------------

@@ -122,14 +122,8 @@ def followup(
     request_id: str,
     supplier_id: str,
 ) -> None:
-    """Create a draft follow-up reply for a supplier response."""
-    import os
-
-    from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
-
-    from xsource.outreach.client import SafeOutreachClient
-    from xsource.p4.followup import build_followup_draft, create_followup_draft
+    """Create a draft follow-up reply for a supplier response (opens cockpit)."""
+    from xsource.cli.cockpit import run_cockpit
 
     cfg = Config.from_env()
     suppliers, requests_ = build_stores(cfg)
@@ -144,28 +138,7 @@ def followup(
             f"supplier {supplier_id} has no recorded reply on request {request_id}"
         )
 
-    draft = build_followup_draft(
-        request,
-        supplier,
-        operator_name=cfg.operator_display_name,
-    )
-    typer.echo(f"To: {draft['to']}")
-    typer.echo(f"Subject: {draft['subject']}")
-    typer.echo(draft["body"])
-    if not typer.confirm("Create follow-up draft?", default=False):
-        typer.echo("Apply declined.")
-        return
-
-    creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_GMAIL_TOKEN_PATH"])
-    service = build("gmail", "v1", credentials=creds, cache_discovery=False)
-    result = create_followup_draft(
-        request,
-        supplier,
-        draft_client=SafeOutreachClient(service),
-        operator_name=cfg.operator_display_name,
-        now=dt.datetime.now(dt.UTC),
-    )
-    typer.echo(result)
+    run_cockpit(focus=f"request.followup:{request_id}:{supplier_id}")
 
 
 @request_app.command("reorder")
