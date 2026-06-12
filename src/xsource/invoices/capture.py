@@ -54,6 +54,13 @@ def _variance(
     }
 
 
+def _validate_iso_date(value: str, field: str) -> None:
+    try:
+        dt.date.fromisoformat(value)
+    except ValueError:
+        raise ValueError(f"invalid {field} {value!r}: expected YYYY-MM-DD") from None
+
+
 def capture_invoice(
     *,
     suppliers,
@@ -72,6 +79,9 @@ def capture_invoice(
     file_ref: str | None = None,
     tolerance: float = 0.10,
 ) -> CaptureReport:
+    _validate_iso_date(invoice_date, "invoice_date")
+    if due_date:
+        _validate_iso_date(due_date, "due_date")
     now = now or dt.datetime.now(dt.UTC).isoformat()
     warnings: list[str] = []
     supplier = suppliers.get(supplier_id)
@@ -80,13 +90,19 @@ def capture_invoice(
     request = requests.get(request_id) if request_id else None
     if request_id and request is None:
         raise ValueError(f"unknown request id {request_id}")
-    if request is not None and request.chosen_supplier_id and request.chosen_supplier_id != supplier_id:
+    if (
+        request is not None
+        and request.chosen_supplier_id
+        and request.chosen_supplier_id != supplier_id
+    ):
         warnings.append(
             f"chosen supplier {request.chosen_supplier_id} differs from invoice supplier {supplier_id}"
         )
 
     quoted_minor = _quote_minor(supplier.price_history, request_id) if request_id else None
-    variance = _variance(quoted_minor=quoted_minor, invoiced_minor=amount_minor, tolerance=tolerance)
+    variance = _variance(
+        quoted_minor=quoted_minor, invoiced_minor=amount_minor, tolerance=tolerance
+    )
     operator_signal = None
     if variance is not None:
         warnings.append(
@@ -146,7 +162,7 @@ def _existing_invoice_keys(invoices) -> set[tuple[str, str]]:
 
 def import_csv(path: Path, *, suppliers, requests, invoices) -> dict[str, int]:
     existing = _existing_invoice_keys(invoices)
-    imported = skipped = 0
+    imported = skipped = errored = 0
     with open(path, newline="") as f:
         for row in csv.DictReader(f):
             supplier_id = (row.get("supplier_id") or "").strip()
@@ -154,20 +170,33 @@ def import_csv(path: Path, *, suppliers, requests, invoices) -> dict[str, int]:
             if invoice_number and (supplier_id, invoice_number) in existing:
                 skipped += 1
                 continue
-            capture_invoice(
-                suppliers=suppliers,
-                requests=requests,
-                invoices=invoices,
-                request_id=(row.get("request_id") or "").strip(),
-                supplier_id=supplier_id,
-                amount_minor=int((row.get("amount_minor") or "0").strip()),
-                invoice_number=invoice_number,
-                invoice_date=(row.get("invoice_date") or "").strip(),
-                due_date=(row.get("due_date") or "").strip() or None,
-                description=(row.get("description") or "").strip(),
-                source="csv",
-            )
+            raw_amount = (row.get("amount_minor") or "").strip()
+            try:
+                amount_minor = int(raw_amount)
+            except (ValueError, TypeError):
+                errored += 1
+                continue
+            if amount_minor <= 0:
+                errored += 1
+                continue
+            try:
+                capture_invoice(
+                    suppliers=suppliers,
+                    requests=requests,
+                    invoices=invoices,
+                    request_id=(row.get("request_id") or "").strip(),
+                    supplier_id=supplier_id,
+                    amount_minor=amount_minor,
+                    invoice_number=invoice_number,
+                    invoice_date=(row.get("invoice_date") or "").strip(),
+                    due_date=(row.get("due_date") or "").strip() or None,
+                    description=(row.get("description") or "").strip(),
+                    source="csv",
+                )
+            except ValueError:
+                errored += 1
+                continue
             if invoice_number:
                 existing.add((supplier_id, invoice_number))
             imported += 1
-    return {"imported": imported, "skipped": skipped}
+    return {"imported": imported, "skipped": skipped, "errored": errored}

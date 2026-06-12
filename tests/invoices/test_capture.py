@@ -177,6 +177,99 @@ def test_import_csv_is_idempotent_on_supplier_and_invoice_number(tmp_path):
     first = import_csv(csv_path, suppliers=suppliers, requests=requests, invoices=invoices)
     second = import_csv(csv_path, suppliers=suppliers, requests=requests, invoices=invoices)
 
-    assert first == {"imported": 1, "skipped": 0}
-    assert second == {"imported": 0, "skipped": 1}
+    assert first == {"imported": 1, "skipped": 0, "errored": 0}
+    assert second == {"imported": 0, "skipped": 1, "errored": 0}
     assert len(invoices.all()) == 1
+
+
+def test_capture_rejects_malformed_invoice_date(tmp_path):
+    suppliers, requests, invoices = _stores(tmp_path)
+    suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))
+
+    import pytest
+
+    with pytest.raises(ValueError, match="invoice_date"):
+        capture_invoice(
+            suppliers=suppliers,
+            requests=requests,
+            invoices=invoices,
+            request_id="",
+            supplier_id="s-0001",
+            amount_minor=10000,
+            invoice_number="INV-BAD",
+            invoice_date="11/06/2026",
+            due_date=None,
+            description="Bad date",
+            source="manual",
+        )
+
+    assert len(invoices.all()) == 0
+
+
+def test_capture_rejects_malformed_due_date(tmp_path):
+    suppliers, requests, invoices = _stores(tmp_path)
+    suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))
+
+    import pytest
+
+    with pytest.raises(ValueError, match="due_date"):
+        capture_invoice(
+            suppliers=suppliers,
+            requests=requests,
+            invoices=invoices,
+            request_id="",
+            supplier_id="s-0001",
+            amount_minor=10000,
+            invoice_number="INV-BAD2",
+            invoice_date="2026-06-11",
+            due_date="30/06/2026",
+            description="Bad due date",
+            source="manual",
+        )
+
+    assert len(invoices.all()) == 0
+
+
+def test_import_csv_missing_amount_does_not_persist_invoice(tmp_path):
+    suppliers, requests, invoices = _stores(tmp_path)
+    suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))
+    csv_path = tmp_path / "invoices.csv"
+    csv_path.write_text(
+        "supplier_id,invoice_number,invoice_date,due_date,description,request_id\n"
+        "s-0001,INV-MISSING,2026-06-11,2026-06-30,No amount column,\n"
+    )
+
+    result = import_csv(csv_path, suppliers=suppliers, requests=requests, invoices=invoices)
+
+    assert result == {"imported": 0, "skipped": 0, "errored": 1}
+    assert len(invoices.all()) == 0
+
+
+def test_import_csv_zero_amount_does_not_persist_invoice(tmp_path):
+    suppliers, requests, invoices = _stores(tmp_path)
+    suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))
+    csv_path = tmp_path / "invoices.csv"
+    csv_path.write_text(
+        "supplier_id,invoice_number,amount_minor,invoice_date,due_date,description,request_id\n"
+        "s-0001,INV-ZERO,0,2026-06-11,2026-06-30,Zero amount,\n"
+    )
+
+    result = import_csv(csv_path, suppliers=suppliers, requests=requests, invoices=invoices)
+
+    assert result == {"imported": 0, "skipped": 0, "errored": 1}
+    assert len(invoices.all()) == 0
+
+
+def test_import_csv_malformed_date_does_not_persist_invoice(tmp_path):
+    suppliers, requests, invoices = _stores(tmp_path)
+    suppliers.upsert(Supplier(id="s-0001", name="Smith Heating"))
+    csv_path = tmp_path / "invoices.csv"
+    csv_path.write_text(
+        "supplier_id,invoice_number,amount_minor,invoice_date,due_date,description,request_id\n"
+        "s-0001,INV-BADDATE,10000,11/06/2026,2026-06-30,UK format date,\n"
+    )
+
+    result = import_csv(csv_path, suppliers=suppliers, requests=requests, invoices=invoices)
+
+    assert result == {"imported": 0, "skipped": 0, "errored": 1}
+    assert len(invoices.all()) == 0

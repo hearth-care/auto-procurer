@@ -332,5 +332,17 @@ can't drift silently.
 - Known-failing tests: none. Focused RED was
   `uv run pytest tests/test_signals_build.py::test_invoice_variance_signal_uses_captured_invoice_state -q`,
   which failed because `build_invoice_variance_signals` did not exist.
+- QA fix (fixer-claude-20260612T055026Z-89007): Added ISO date validation to
+  `capture_invoice` for `invoice_date` and `due_date`; malformed dates (e.g. UK format
+  `11/06/2026`) now raise `ValueError` before any store write. Fixed `import_csv` to
+  require `amount_minor` column presence and a positive integer value; missing/zero amounts
+  are counted as `errored` rows and not persisted. `import_csv` now returns
+  `{"imported": ..., "skipped": ..., "errored": ...}`. Per-row `ValueError` from
+  `capture_invoice` (e.g. bad dates in CSV) is caught and counted as errored. Six new
+  tests cover: malformed invoice_date rejection, malformed due_date rejection, missing
+  amount_minor column, zero amount_minor, and malformed date in CSV import.
+- Verification: `uv run pytest -q` returned `200 passed in 6.67s`.
+- Verification: `uv run ruff check .` returned `All checks passed!`.
+- Verification: `uv run mypy` returned `Success: no issues found in 59 source files`.
 - Next concrete step: push with lease, mark ready, move label to `agent:needs-qa`, then
   post completion comment.
