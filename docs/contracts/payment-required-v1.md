@@ -58,7 +58,14 @@ Ack fields:
 
 `accepted` transitions `emitted` invoices to `acknowledged`. `rejected:<reason>`
 transitions them to `rejected` and leaves an operator-visible `action.required`
-signal until corrected.
+signal until corrected. A non-integer or unsupported `contract_version` is
+skipped (not a hard error), so one malformed record never stops the sync.
+
+Rejected invoices have a real recovery path: the operator corrects and re-emits
+with `xsource invoice reemit <id>` (transitions `rejected → emitted`, clearing
+the rejection reason), or abandons it with `xsource invoice write-off <id>`
+(`rejected → written_off`). A re-emitted invoice is acked exactly like a freshly
+emitted one.
 
 ## Fixtures
 

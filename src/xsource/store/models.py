@@ -122,7 +122,7 @@ class InvoiceRecord:
         "acknowledged": {"settled", "disputed"},
         "disputed": {"re-emitted", "settled", "written_off"},
         "re-emitted": {"acknowledged", "rejected"},
-        "rejected": {"emitted"},
+        "rejected": {"emitted", "written_off"},
         "settled": set(),
         "written_off": set(),
     }
@@ -136,7 +136,9 @@ class InvoiceRecord:
     def transition_to(self, status: str, *, at: str | None = None) -> None:
         allowed = self._TRANSITIONS.get(self.status, set())
         if status not in allowed:
-            raise InvoiceTransitionError(f"cannot transition invoice {self.id} {self.status}->{status}")
+            raise InvoiceTransitionError(
+                f"cannot transition invoice {self.id} {self.status}->{status}"
+            )
         self.status = status
         self.updated_at = at or _now_iso()
 

@@ -358,5 +358,23 @@ can't drift silently.
 - Verification: `uv run pytest -q` returned `207 passed in 5.86s`.
 - Verification: `uv run ruff check .` returned `All checks passed!`.
 - Verification: `uv run mypy` returned `Success: no issues found in 59 source files`.
-- Next concrete step: push with lease, mark ready, move label to `agent:needs-qa`, then
-  post completion comment.
+- QA fix (fixer-claude-20260612T061815Z-7032): Addressed the two HIGH findings from
+  qa-codex-20260612T061246Z-7032.
+  - Finding 1 (rejected-invoice recovery path was dead): added `reemit_invoice` and
+    `write_off_invoice` to `src/xsource/invoices/capture.py`, exposed as `xsource invoice reemit
+    <id>` (rejected → emitted, with optional `--amount-minor/--invoice-date/--due-date/
+    --description/--invoice-number` corrections, validated like capture; clears the rejection
+    reason) and `xsource invoice write-off <id>` (rejected → written_off). Added
+    `rejected → written_off` to the `InvoiceRecord` transition table. The rejected-invoice
+    `action.required` signal detail now names both commands so the CTA points at a real
+    workflow. Contract doc updated. `tests/invoices/test_recovery.py` drives the full
+    rejected → corrected → re-emitted → acknowledged path end to end plus write-off and guard cases.
+  - Finding 2 (malformed ack `contract_version` crashed sync-acks): `ingest_ack_records` now
+    parses the version via `_is_supported_version`, counting non-integer or unsupported
+    versions as `skipped` and continuing past them. Three new tests in `tests/invoices/test_acks.py`
+    cover non-integer, unsupported-numeric, and continue-past-bad-row cases.
+- Verification: `uv run pytest -q` returned `218 passed in 4.33s`.
+- Verification: `uv run ruff check .` returned `All checks passed!`.
+- Verification: `uv run mypy` returned `Success: no issues found in 59 source files`.
+- Next concrete step: rebase onto latest origin/main, push with lease, mark ready, move label to
+  `agent:needs-qa`, then post completion comment.

@@ -154,6 +154,65 @@ def capture_invoice(
     )
 
 
+def reemit_invoice(
+    invoices,
+    invoice_id: str,
+    *,
+    amount_minor: int | None = None,
+    invoice_date: str | None = None,
+    due_date: str | None = None,
+    description: str | None = None,
+    invoice_number: str | None = None,
+    now: str | None = None,
+) -> InvoiceRecord:
+    """Correct a rejected invoice and return it to the emittable lifecycle.
+
+    Only `rejected` invoices can be re-emitted (the consumer refused the handoff
+    and the operator has fixed the underlying problem). Supplied fields overwrite
+    the stored values; omitted fields are left unchanged. Validation matches
+    capture so a re-emit can never push a malformed amount or date downstream.
+    """
+    invoice = invoices.get(invoice_id)
+    if invoice is None:
+        raise ValueError(f"unknown invoice id {invoice_id}")
+    if invoice.status != "rejected":
+        raise ValueError(
+            f"invoice {invoice_id} is {invoice.status}; only rejected invoices can be re-emitted"
+        )
+    if amount_minor is not None:
+        if amount_minor <= 0:
+            raise ValueError(f"amount_minor must be a positive integer, got {amount_minor}")
+        invoice.amount_minor = amount_minor
+    if invoice_date is not None:
+        _validate_iso_date(invoice_date, "invoice_date")
+        invoice.invoice_date = invoice_date
+    if due_date is not None:
+        _validate_iso_date(due_date, "due_date")
+        invoice.due_date = due_date
+    if description is not None:
+        invoice.description = description
+    if invoice_number is not None:
+        invoice.invoice_number = invoice_number
+    invoice.transition_to("emitted", at=now)
+    invoice.handoff.pop("rejection_reason", None)
+    invoices.upsert(invoice)
+    return invoice
+
+
+def write_off_invoice(invoices, invoice_id: str, *, now: str | None = None) -> InvoiceRecord:
+    """Mark a rejected invoice written off when it will never be re-emitted."""
+    invoice = invoices.get(invoice_id)
+    if invoice is None:
+        raise ValueError(f"unknown invoice id {invoice_id}")
+    if invoice.status != "rejected":
+        raise ValueError(
+            f"invoice {invoice_id} is {invoice.status}; only rejected invoices can be written off"
+        )
+    invoice.transition_to("written_off", at=now)
+    invoices.upsert(invoice)
+    return invoice
+
+
 def _existing_invoice_keys(invoices) -> set[tuple[str, str]]:
     return {
         (invoice.supplier_id, invoice.invoice_number)

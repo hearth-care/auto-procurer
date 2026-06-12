@@ -8,7 +8,12 @@ import typer
 
 from xsource.config import Config
 from xsource.invoices.acks import ingest_ack_records, read_ack_jsonl
-from xsource.invoices.capture import capture_invoice, import_csv
+from xsource.invoices.capture import (
+    capture_invoice,
+    import_csv,
+    reemit_invoice,
+    write_off_invoice,
+)
 from xsource.wiring import build_stores
 
 invoice_app = typer.Typer(help="Capture and hand off supplier invoices.")
@@ -72,6 +77,41 @@ def list_() -> None:
             f"{invoice.id}\t{invoice.status}\t{invoice.supplier_id}\t"
             f"{invoice.amount_minor} {invoice.currency}\t{invoice.invoice_number or ''}"
         )
+
+
+@invoice_app.command("reemit")
+def reemit(
+    invoice_id: str = typer.Argument(..., help="Id of a rejected invoice to correct and re-emit."),
+    amount_minor: int | None = typer.Option(None, "--amount-minor"),
+    invoice_date: str | None = typer.Option(None, "--invoice-date"),
+    due_date: str | None = typer.Option(None, "--due-date"),
+    description: str | None = typer.Option(None, "--description"),
+    invoice_number: str | None = typer.Option(None, "--invoice-number"),
+) -> None:
+    """Correct a rejected invoice and return it to the emittable lifecycle."""
+    cfg = Config.from_env()
+    _suppliers, _requests, invoices = build_stores(cfg)
+    invoice = reemit_invoice(
+        invoices,
+        invoice_id,
+        amount_minor=amount_minor,
+        invoice_date=invoice_date,
+        due_date=due_date,
+        description=description,
+        invoice_number=invoice_number,
+    )
+    typer.echo({"invoice_id": invoice.id, "status": invoice.status})
+
+
+@invoice_app.command("write-off")
+def write_off(
+    invoice_id: str = typer.Argument(..., help="Id of a rejected invoice to write off."),
+) -> None:
+    """Mark a rejected invoice written off (it will never be re-emitted)."""
+    cfg = Config.from_env()
+    _suppliers, _requests, invoices = build_stores(cfg)
+    invoice = write_off_invoice(invoices, invoice_id)
+    typer.echo({"invoice_id": invoice.id, "status": invoice.status})
 
 
 @invoice_app.command("sync-acks")

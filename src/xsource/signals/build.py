@@ -348,7 +348,11 @@ def build_rejected_invoice_signals(
             _signal(
                 kind="action.required",
                 title=f"Fix rejected invoice {invoice.invoice_number or invoice.id}",
-                detail=f"{supplier_name}: {reason}",
+                detail=(
+                    f"{supplier_name}: {reason}. "
+                    f"Correct and re-emit with `xsource invoice reemit {invoice.id}`, "
+                    f"or `xsource invoice write-off {invoice.id}`."
+                ),
                 level="warn",
                 urgency="high",
                 dedup_key=f"xsource|invoice-rejected|{invoice.id}",

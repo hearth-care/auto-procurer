@@ -165,9 +165,7 @@ def test_build_store_offline_signals_silent_when_online():
 
 
 def test_build_store_offline_signals_silent_when_no_open_requests():
-    signals = build_store_offline_signals(
-        [], today=_TODAY, now=_NOW, store_offline=True
-    )
+    signals = build_store_offline_signals([], today=_TODAY, now=_NOW, store_offline=True)
     assert signals == ()
 
 
@@ -313,3 +311,6 @@ def test_rejected_invoice_signal_is_operator_visible() -> None:
     assert signals[0].kind == "action.required"
     assert signals[0].dedup_key == "xsource|invoice-rejected|i-0001"
     assert "missing VAT number" in signals[0].detail
+    # The CTA must point at a real recovery path, not a dead capture-new walk.
+    assert "invoice reemit i-0001" in signals[0].detail
+    assert "invoice write-off i-0001" in signals[0].detail
