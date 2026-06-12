@@ -262,8 +262,8 @@ can't drift silently.
 
 ## HANDOFF NOTES
 
-- Current phase: QA fix for qa-codex-20260612T063408Z-7032 complete; run full gates,
-  rebase onto latest `origin/main`, push, then finish protocol.
+- Current phase: QA fix for qa-codex-20260612T063408Z-7032 complete on latest
+  `origin/main`; finish protocol.
 - Completed: Phase 1 schema/store slice with `InvoiceRecord`, lifecycle validation,
   `invoices.jsonl` `SyncedStore`, and focused tests.
 - Completed: Phase 2 capture/import/CLI/cockpit slice with price-history linkage,
@@ -408,5 +408,12 @@ can't drift silently.
 - Verification: nearby regression suite
   `uv run pytest tests/invoices/test_acks.py tests/invoices/test_recovery.py tests/invoices/test_capture.py tests/test_signals_build.py -q`
   returned `42 passed in 0.07s`.
-- Next concrete step: run full local gates, rebase onto latest `origin/main`, push with
-  lease, mark ready, move label to `agent:needs-qa`, post DONE.
+- Rebase check: `git fetch origin && git rebase origin/main` returned
+  `Current branch claude/plan-invoice-to-xbook is up to date.`
+- Verification: full suite `uv run pytest -q` returned `259 passed in 9.72s`.
+- Verification: `uv run ruff check .` returned `All checks passed!`.
+- Verification: `uv run mypy` returned `Success: no issues found in 60 source files`.
+- Verification: `pre-commit run --all-files` returned `InvalidConfigError:
+  .pre-commit-config.yaml is not a file` (expected for this repo; no config exists).
+- Next concrete step: push final handoff note, mark ready, move label to
+  `agent:needs-qa`, post DONE.
