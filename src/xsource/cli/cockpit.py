@@ -391,6 +391,365 @@ _request_outreach_handler = make_walk_handler(
 )
 
 
+_TRIGGER_BLAST = BlastRadius(
+    summary="Creates one Google Sheet and writes request + suppliers to the xsource store. Does not send or draft any email.",
+    reversible="Sheet can be deleted; store records can be removed by id.",
+)
+
+_FOLLOWUP_BLAST = BlastRadius(
+    summary="Creates one Gmail draft follow-up reply. It never sends email.",
+    reversible="Draft can be deleted from Gmail; followup metadata can be removed from the request record.",
+)
+
+_REORDER_BLAST = BlastRadius(
+    summary="Creates one Google Sheet and writes a reorder request + suppliers to the xsource store. Does not send or draft any email.",
+    reversible="Sheet can be deleted; store records can be removed by id.",
+)
+
+
+def _trigger_step(ctx: WizardContext, bag: dict) -> StepResult:
+    """Parse a trigger payload and let the operator amend the extracted need."""
+    import json as _json
+
+    focus = ctx.focus or ""
+    payload: dict = {}
+    if focus:
+        with contextlib.suppress(Exception):
+            payload = _json.loads(focus)
+        if not payload:
+            with contextlib.suppress(Exception):
+                payload = _json.loads(Path(focus).read_text())
+
+    if not payload:
+        raw = ctx.input_fn("Trigger payload (JSON or file path): ").strip() if ctx.input_fn else ""
+        if not raw:
+            return StepResult(ok=False, message="No trigger payload provided.")
+        with contextlib.suppress(Exception):
+            payload = _json.loads(raw)
+        if not payload:
+            with contextlib.suppress(Exception):
+                payload = _json.loads(Path(raw).read_text())
+        if not payload:
+            return StepResult(ok=False, message="Could not parse trigger payload.")
+
+    from xsource.p4.triggers import parse_trigger
+
+    parsed = parse_trigger(payload)
+    if parsed is None:
+        return StepResult(ok=False, message="Not a procurement trigger.")
+
+    ctx.console.print(f"[dim]source:[/dim] {parsed.constraints.get('source', 'unknown')}")
+    ctx.console.print(f"[dim]need:[/dim]   {parsed.raw_need}")
+    amended = ctx.input_fn("Amend need (Enter to keep): ").strip() if ctx.input_fn else ""
+    raw_need = amended if amended else parsed.raw_need
+
+    cfg = Config.from_env()
+    constraints = {
+        **parsed.constraints,
+        "radius_miles": cfg.default_radius_miles,
+        "needed_by": None,
+    }
+    return StepResult(ok=True, data={"raw_need": raw_need, "constraints": constraints})
+
+
+_request_trigger_handler = make_walk_handler(
+    title="Trigger new request",
+    steps=[
+        Step(label="Trigger", run=_trigger_step),
+        Step(label="Triage", run=_triage_step),
+        Step(label="Research", run=_research_step),
+        Step(label="Review and apply", run=_review_apply_step),
+    ],
+    blast_radius=_TRIGGER_BLAST,
+    preconditions_fn=_preconditions,
+    equivalent_cli="xsource request trigger",
+    total=5,
+)
+
+
+def _followup_select_step(ctx: WizardContext, bag: dict) -> StepResult:
+    """Select the request and supplier for a follow-up draft."""
+    from xsource.p4.followup import build_followup_draft
+
+    # Focus format: "request.followup:{request_id}:{supplier_id}" (pre-filled by CLI)
+    _prefilled_request_id = ""
+    _prefilled_supplier_id = ""
+    focus = ctx.focus or ""
+    if focus.startswith("request.followup:"):
+        remainder = focus[len("request.followup:") :]
+        if ":" in remainder:
+            _prefilled_request_id, _prefilled_supplier_id = remainder.split(":", 1)
+        else:
+            _prefilled_request_id = remainder
+
+    request_id = _prefilled_request_id or (
+        ctx.input_fn("Request id: ").strip() if ctx.input_fn else ""
+    )
+    if not request_id:
+        return StepResult(ok=False, message="No request id entered.")
+
+    cfg = Config.from_env()
+    suppliers, requests_ = build_stores(cfg)
+    request = requests_.get(request_id)
+    if request is None:
+        return StepResult(ok=False, message=f"Unknown request {request_id}.")
+
+    suppliers_by_id = {supplier.id: supplier for supplier in suppliers.all()}
+    replied_entries = [
+        entry for entry in request.shortlist if entry.reply and entry.supplier_id in suppliers_by_id
+    ]
+    if not replied_entries:
+        return StepResult(ok=False, message=f"No replied shortlist entries for {request_id}.")
+
+    ctx.console.print("[bold]Replied shortlist entries[/bold]")
+    for entry in replied_entries:
+        supplier = suppliers_by_id[entry.supplier_id]
+        summary = entry.reply.get("summary") or "reply recorded"
+        ctx.console.print(f"  {entry.rank}. {supplier.id} — {supplier.name}: {summary}")
+
+    supplier_id = _prefilled_supplier_id or (
+        ctx.input_fn("Supplier id: ").strip() if ctx.input_fn else ""
+    )
+    if not supplier_id:
+        return StepResult(ok=False, message="No supplier id entered.")
+    supplier = suppliers_by_id.get(supplier_id)
+    if supplier is None:
+        return StepResult(ok=False, message=f"Unknown supplier {supplier_id}.")
+    if not any(entry.supplier_id == supplier_id for entry in replied_entries):
+        return StepResult(
+            ok=False,
+            message=f"Supplier {supplier_id} has no recorded reply on {request_id}.",
+        )
+
+    draft = build_followup_draft(
+        request,
+        supplier,
+        operator_name=cfg.operator_display_name,
+    )
+    ctx.console.print("[bold]Draft preview[/bold]")
+    ctx.console.print(f"To: {draft['to']}")
+    ctx.console.print(f"Subject: {draft['subject']}")
+    ctx.console.print(draft["body"])
+    return StepResult(
+        ok=True,
+        data={
+            "request_id": request_id,
+            "supplier_id": supplier_id,
+            "request": request,
+            "supplier": supplier,
+        },
+    )
+
+
+def _followup_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
+    """Preview and confirm the follow-up draft, then create it."""
+    if not confirm_apply(
+        ctx,
+        prompt="Create follow-up draft?",
+        equivalent_cli="xsource request followup",
+    ):
+        return StepResult(ok=False, message="Apply declined.")
+
+    import os
+
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+
+    from xsource.outreach.client import SafeOutreachClient
+    from xsource.p4.followup import create_followup_draft
+
+    cfg = Config.from_env()
+    request = bag.get("request")
+    supplier = bag.get("supplier")
+    requests_ = None
+    if request is None or supplier is None:
+        suppliers, requests_ = build_stores(cfg)
+        request = requests_.get(bag["request_id"])
+        if request is None:
+            return StepResult(ok=False, message=f"Unknown request {bag['request_id']}.")
+        supplier = next((s for s in suppliers.all() if s.id == bag["supplier_id"]), None)
+        if supplier is None:
+            return StepResult(ok=False, message=f"Unknown supplier {bag['supplier_id']}.")
+    else:
+        _, requests_ = build_stores(cfg)
+
+    creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_GMAIL_TOKEN_PATH"])
+    service = build("gmail", "v1", credentials=creds, cache_discovery=False)
+    result = create_followup_draft(
+        request,
+        supplier,
+        draft_client=SafeOutreachClient(service),
+        operator_name=cfg.operator_display_name,
+        now=dt.datetime.now(dt.UTC),
+    )
+    requests_.upsert(request)
+    return StepResult(
+        ok=True,
+        data={"summary": f"Created draft {result['draft_id']} for {supplier.name}."},
+    )
+
+
+_request_followup_handler = make_walk_handler(
+    title="Draft follow-up reply",
+    steps=[
+        Step(label="Select", run=_followup_select_step),
+        Step(label="Draft", run=_followup_apply_step),
+    ],
+    blast_radius=_FOLLOWUP_BLAST,
+    preconditions_fn=_outreach_preconditions,
+    equivalent_cli="xsource request followup",
+    total=2,
+)
+
+
+def _reorder_proposal_step(ctx: WizardContext, bag: dict) -> StepResult:
+    """Show the reorder proposal for a recurring supplier and capture the decision."""
+    from xsource.p4.reorder import build_reorder_proposal
+
+    focus = ctx.focus or ""
+    supplier_id = focus.removeprefix("request.reorder:") if focus else ""
+    if not supplier_id:
+        supplier_id = ctx.input_fn("Supplier id: ").strip() if ctx.input_fn else ""
+    if not supplier_id:
+        return StepResult(ok=False, message="No supplier id provided.")
+
+    cfg = Config.from_env()
+    suppliers, requests_ = build_stores(cfg)
+    supplier = next((s for s in suppliers.all() if s.id == supplier_id), None)
+    if supplier is None:
+        return StepResult(ok=False, message=f"Unknown supplier {supplier_id}.")
+
+    proposal = build_reorder_proposal(supplier, requests_.all())
+    ctx.console.print(f"[bold]Reorder proposal for {supplier.name}[/bold]")
+    ctx.console.print(f"  Need:   {proposal.raw_need}")
+    ctx.console.print(f"  Last done: {proposal.last_done or '—'}")
+    ctx.console.print(f"  Due:    {proposal.due_at}")
+    if proposal.budget_hint.get("sample_size", 0) > 0:
+        ctx.console.print(
+            f"  Budget hint: ~£{proposal.budget_hint['median']} "
+            f"(n={proposal.budget_hint['sample_size']})"
+        )
+    choice = (
+        ctx.input_fn("a) Reorder  b) Re-tender  c) Dismiss [a/b/c]: ").strip().lower()
+        if ctx.input_fn
+        else "c"
+    )
+    if choice not in ("a", "b"):
+        return StepResult(ok=False, message="Dismissed.")
+
+    reorder_constraints = {
+        "radius_miles": cfg.default_radius_miles,
+        "needed_by": None,
+        "reorder_supplier_id": supplier_id,
+        "budget_hint": proposal.budget_hint,
+    }
+    return StepResult(
+        ok=True,
+        data={
+            "raw_need": proposal.raw_need,
+            "constraints": reorder_constraints,
+            "reorder_decision": "reorder" if choice == "a" else "retender",
+            "reorder_supplier": supplier,
+            "reorder_proposal": proposal,
+        },
+    )
+
+
+def _reorder_research_step(ctx: WizardContext, bag: dict) -> StepResult:
+    """For 'reorder': build a single-candidate result. For 're-tender': run full research."""
+    from xsource.research.candidates import Candidate
+    from xsource.research.pipeline import ResearchResult
+
+    decision = bag.get("reorder_decision", "reorder")
+    supplier = bag["reorder_supplier"]
+
+    if decision == "reorder":
+        candidate = Candidate(
+            name=supplier.name,
+            source="book",
+            phone=supplier.phone,
+            email=supplier.email,
+            website=supplier.website,
+            address=supplier.address,
+            postcode=supplier.postcode,
+            source_url=supplier.source_url,
+            rating=None,
+            review_count=None,
+            rating_scale=None,
+            extra={"supplier_id": supplier.id},
+        )
+        result = ResearchResult(shortlist=[candidate], indicative=None, stages={})
+        proposal = bag["reorder_proposal"]
+        triage = {
+            "category": proposal.category,
+            "search_terms": [],
+            "also_try": [],
+            "email_vars": {
+                "job_summary": proposal.raw_need,
+                "location_town": "",
+            },
+        }
+        return StepResult(ok=True, data={"triage": triage, "result": result})
+
+    # re-tender: run normal triage + research, then guarantee incumbent is in the shortlist
+    triage_result = _triage_step(ctx, bag)
+    if not triage_result.ok:
+        return triage_result
+    bag_with_triage = {**bag, **(triage_result.data or {})}
+
+    research_result = _research_step(ctx, bag_with_triage)
+    if not research_result.ok:
+        return research_result
+
+    # Inject incumbent into shortlist when category mismatch means find_matches missed them
+    data = research_result.data or {}
+    result = data["result"]
+    if not any(c.extra.get("supplier_id") == supplier.id for c in result.shortlist):
+        from xsource.research.pipeline import ResearchResult
+
+        incumbent = Candidate(
+            name=supplier.name,
+            source="book",
+            phone=supplier.phone,
+            email=supplier.email,
+            website=supplier.website,
+            address=supplier.address,
+            postcode=supplier.postcode,
+            source_url=supplier.source_url,
+            rating=None,
+            review_count=None,
+            rating_scale=None,
+            extra={"supplier_id": supplier.id},
+        )
+        research_result = StepResult(
+            ok=True,
+            data={
+                **data,
+                "result": ResearchResult(
+                    shortlist=[incumbent] + list(result.shortlist),
+                    indicative=result.indicative,
+                    stages=result.stages,
+                    caps=result.caps,
+                ),
+            },
+        )
+    return research_result
+
+
+_request_reorder_handler = make_walk_handler(
+    title="Reorder recurring service",
+    steps=[
+        Step(label="Proposal", run=_reorder_proposal_step),
+        Step(label="Research", run=_reorder_research_step),
+        Step(label="Review and apply", run=_review_apply_step),
+    ],
+    blast_radius=_REORDER_BLAST,
+    preconditions_fn=_preconditions,
+    equivalent_cli="xsource request reorder",
+    total=4,
+)
+
+
 def register_all() -> None:
     """Register xsource's cockpit capabilities."""
     register_capability(
@@ -399,7 +758,7 @@ def register_all() -> None:
             shelf="A",
             title="New request",
             summary="Plain-English need to a pre-filled supplier shortlist Sheet.",
-            equivalent_cli="xsource request new",
+            equivalent_cli=None,  # type: ignore[arg-type]
             run=_request_new_handler,
             blast_radius=_REQUEST_NEW_BLAST,
         )
@@ -410,9 +769,42 @@ def register_all() -> None:
             shelf="E",
             title="Draft outreach",
             summary="Create draft-only quote requests for suppliers on an open request.",
-            equivalent_cli="xsource request outreach",
+            equivalent_cli=None,  # type: ignore[arg-type]
             run=_request_outreach_handler,
             blast_radius=_REQUEST_OUTREACH_BLAST,
+        )
+    )
+    register_capability(
+        CapabilitySpec(
+            key="request.trigger",
+            shelf="A",
+            title="Trigger new request",
+            summary="Convert an approved email/chat trigger into request.new input.",
+            equivalent_cli="xsource request trigger",
+            run=_request_trigger_handler,
+            blast_radius=_TRIGGER_BLAST,
+        )
+    )
+    register_capability(
+        CapabilitySpec(
+            key="request.followup",
+            shelf="E",
+            title="Draft follow-up",
+            summary="Create draft-only follow-up replies for supplier responses. It never sends email.",
+            equivalent_cli="xsource request followup",
+            run=_request_followup_handler,
+            blast_radius=_FOLLOWUP_BLAST,
+        )
+    )
+    register_capability(
+        CapabilitySpec(
+            key="request.reorder",
+            shelf="A",
+            title="Reorder recurring service",
+            summary="Prefilled reorder from recurring supplier — review then apply. Does not send or draft any email in this step.",
+            equivalent_cli="xsource request reorder",
+            run=_request_reorder_handler,
+            blast_radius=_REORDER_BLAST,
         )
     )
     for key, shelf, title, summary, cli in (
@@ -421,28 +813,28 @@ def register_all() -> None:
             "B",
             "List requests",
             "Show open and recent procurement requests.",
-            "xsource request list",
+            None,
         ),
         (
             "book.search",
             "C",
             "Search black book",
             "Search saved suppliers by name, category, or tag.",
-            "xsource book search",
+            None,
         ),
         (
             "book.import",
             "C",
             "Import black book",
             "Seed the supplier store from CSV.",
-            "xsource book import",
+            None,
         ),
         (
             "book.publish",
             "D",
             "Publish staff directory",
             "Regenerate the read-only staff supplier directory.",
-            "xsource book publish",
+            None,
         ),
         (
             "request.sync",
@@ -459,25 +851,11 @@ def register_all() -> None:
             "xsource watcher status",
         ),
         (
-            "request.trigger",
-            "A",
-            "Trigger new request",
-            "Convert an approved email/chat trigger into request.new input.",
-            "xsource request trigger",
-        ),
-        (
-            "request.followup",
-            "E",
-            "Draft follow-up",
-            "Create draft-only follow-up replies for supplier responses.",
-            "xsource request followup",
-        ),
-        (
             "partner.checkatrade",
             "D",
             "Checkatrade partner lead",
-            "Prepare a signed partner lead request; posting requires an explicit gate.",
-            "xsource partner checkatrade",
+            "Prepare a signed partner lead request (build-only; posting requires an explicit gate).",
+            None,
         ),
     ):
         register_capability(
@@ -486,7 +864,7 @@ def register_all() -> None:
                 shelf=shelf,
                 title=title,
                 summary=summary,
-                equivalent_cli=cli,
+                equivalent_cli=cli,  # type: ignore[arg-type]
                 run=None,
             )
         )
@@ -496,7 +874,7 @@ def register_all() -> None:
             shelf="G",
             title="Doctor",
             summary="Deep health check - auth, freshness, config.",
-            equivalent_cli="xsource",
+            equivalent_cli=None,  # type: ignore[arg-type]
             run=None,
         )
     )
@@ -701,18 +1079,26 @@ def _host(*, agent_mode: bool = False) -> shell.Host:
     )
 
 
-def run_cockpit(*, read_key=keys.read_key, screen=None) -> None:
+def run_cockpit(*, read_key=keys.read_key, screen=None, focus: str | None = None) -> None:
     host = _host()
+    # When a focus is provided, derive the capability key from the "key:value" focus prefix.
+    cap_key = focus.split(":")[0] if focus and ":" in focus else None
     if screen is not None:
         host.on_open()
-        shell._home(host, screen, read_key)
+        if cap_key:
+            shell._open_capability(host, cap_key, screen, read_key, focus=focus)  # type: ignore[attr-defined]
+        else:
+            shell._home(host, screen, read_key)
         return
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return
     console = Console()
     host.on_open()
     with console.screen() as scr:
-        shell._home(host, scr, read_key)
+        if cap_key:
+            shell._open_capability(host, cap_key, scr, read_key, focus=focus)  # type: ignore[attr-defined]
+        else:
+            shell._home(host, scr, read_key)
 
 
 def serve_agent(*, stdin=sys.stdin, stdout=sys.stdout, allow_apply: bool = False) -> None:

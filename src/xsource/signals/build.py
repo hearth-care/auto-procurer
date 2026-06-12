@@ -132,14 +132,22 @@ def build_chase_quote_signals(
 
 def build_recurring_service_signals(
     suppliers: Sequence[Supplier],
+    requests: Sequence[Request] | None = None,
     *,
     today: Date,
     now: datetime,
     horizon_days: int = 21,
 ) -> tuple[Signal, ...]:
+    open_reorder_ids = {
+        r.constraints.get("reorder_supplier_id")
+        for r in (requests or [])
+        if r.status == "open" and r.constraints.get("reorder_supplier_id")
+    }
     out = []
     for supplier in suppliers:
         if not supplier.recurs_every_months or not supplier.last_used:
+            continue
+        if supplier.id in open_reorder_ids:
             continue
         last_used = _parse_date(supplier.last_used)
         if last_used is None:
@@ -156,7 +164,7 @@ def build_recurring_service_signals(
                     dedup_key=f"xsource|recur|{supplier.id}",
                     emitted_at=now,
                     due_at=due_at,
-                    capability_key="book.search",
+                    capability_key="request.reorder",
                     focus=supplier.id,
                     source_id=supplier.id,
                 )
@@ -253,7 +261,9 @@ def scan_xsource_horizon(*, today: Date, now: datetime) -> Sequence[Signal]:
                 now=now,
                 chase_after_days=cfg.chase_after_days,
             ),
-            *build_recurring_service_signals(supplier_records, today=today, now=now),
+            *build_recurring_service_signals(
+                supplier_records, request_records, today=today, now=now
+            ),
             *build_watcher_health_signals(request_records, today=today, now=now),
             *build_store_offline_signals(
                 request_records,

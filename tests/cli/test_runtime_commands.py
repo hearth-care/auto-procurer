@@ -35,6 +35,29 @@ def test_request_sync_command_is_registered():
     assert "sync-all" in result.stdout
 
 
+def test_reorder_rejects_unknown_supplier(monkeypatch, tmp_path):
+    from xsource.cli import request as req_mod
+
+    class _EmptySuppliers:
+        offline = False
+
+        def all(self):
+            return []
+
+    class _EmptyRequests:
+        offline = False
+
+        def all(self):
+            return []
+
+    monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(req_mod, "build_stores", lambda cfg: (_EmptySuppliers(), _EmptyRequests()))
+
+    result = runner.invoke(app, ["request", "reorder", "definitely-not-a-supplier"])
+
+    assert result.exit_code != 0
+
+
 def test_watcher_run_once_can_idle_without_anthropic_key(monkeypatch, tmp_path):
     from xsource.cli import watcher
 
