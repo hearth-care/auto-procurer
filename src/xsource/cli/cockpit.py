@@ -288,7 +288,7 @@ def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
 
 
 def _review_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
-    if not confirm_apply(ctx, prompt="Create request sheet?", equivalent_cli="xsource request new"):
+    if not confirm_apply(ctx, prompt="Create request sheet?", equivalent_cli=None):  # type: ignore[arg-type]
         return StepResult(ok=False, message="Apply declined.")
     from google.oauth2.credentials import Credentials
 
@@ -332,7 +332,7 @@ _request_new_handler = make_walk_handler(
     ],
     blast_radius=_REQUEST_NEW_BLAST,
     preconditions_fn=_preconditions,
-    equivalent_cli="xsource request new",
+    equivalent_cli="",  # cockpit-only walk; no CLI twin
     total=5,
 )
 
@@ -348,7 +348,7 @@ def _outreach_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     if not confirm_apply(
         ctx,
         prompt="Create supplier outreach drafts?",
-        equivalent_cli="xsource request outreach",
+        equivalent_cli=None,  # type: ignore[arg-type]
     ):
         return StepResult(ok=False, message="Apply declined.")
 
@@ -386,7 +386,7 @@ _request_outreach_handler = make_walk_handler(
     ],
     blast_radius=_REQUEST_OUTREACH_BLAST,
     preconditions_fn=_outreach_preconditions,
-    equivalent_cli="xsource request outreach",
+    equivalent_cli="",  # cockpit-only walk; no CLI twin
     total=2,
 )
 
@@ -1054,7 +1054,7 @@ def doctor_build_probes(report: object) -> list[Probe]:
 
 
 def doctor_unconfigured_renderable() -> RenderableType:
-    return render.render_note("xsource doctor", "Doctor could not build a report.")
+    return render.render_note("Doctor", "Doctor could not build a report.")
 
 
 def _on_open() -> None:
