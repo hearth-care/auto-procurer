@@ -83,8 +83,13 @@ jobs:
         run: |
           set -euo pipefail
           image="${XSOURCE_CLOUD_RUN_REGION}-docker.pkg.dev/${XSOURCE_CLOUD_RUN_PROJECT}/${XSOURCE_ARTIFACT_REPOSITORY}/${XSOURCE_IMAGE_NAME}:${GITHUB_SHA}"
+          # Build in the runner (amd64, matches Cloud Run) and push to Artifact
+          # Registry. Avoids Cloud Build, so the deploy SA needs only
+          # artifactregistry.writer (not serviceusage/cloudbuild/staging-bucket
+          # roles) — matching the rest of the fleet's deploy accounts.
           gcloud auth configure-docker "${XSOURCE_CLOUD_RUN_REGION}-docker.pkg.dev" --quiet
-          gcloud builds submit --project "${XSOURCE_CLOUD_RUN_PROJECT}" --tag "${image}" .
+          docker build -t "${image}" .
+          docker push "${image}"
           echo "XSOURCE_IMAGE=${image}" >> "${GITHUB_ENV}"
 
       - name: Deploy jobs paused
