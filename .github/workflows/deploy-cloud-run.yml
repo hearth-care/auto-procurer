@@ -87,7 +87,10 @@ jobs:
           # Registry. Avoids Cloud Build, so the deploy SA needs only
           # artifactregistry.writer (not serviceusage/cloudbuild/staging-bucket
           # roles) — matching the rest of the fleet's deploy accounts.
-          gcloud auth configure-docker "${XSOURCE_CLOUD_RUN_REGION}-docker.pkg.dev" --quiet
+          # Explicit token login — the docker-credential-gcloud helper does not pick up
+          # the WIF-impersonated identity in the runner, so the push goes unauthenticated.
+          gcloud auth print-access-token \
+            | docker login -u oauth2accesstoken --password-stdin "${XSOURCE_CLOUD_RUN_REGION}-docker.pkg.dev"
           docker build -t "${image}" .
           docker push "${image}"
           echo "XSOURCE_IMAGE=${image}" >> "${GITHUB_ENV}"
