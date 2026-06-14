@@ -8,6 +8,7 @@ from typing import Any
 
 import typer
 
+from xsource.beat import write_heartbeat
 from xsource.config import Config
 from xsource.obs import run_session
 from xsource.runtime import emit_heartbeat
@@ -79,13 +80,18 @@ def sync_all() -> None:
     cfg = Config.from_env()
     suppliers, requests, _invoices = build_stores(cfg)
     with run_session(trigger="request.sync-all", args={}):
-        report = sync_all_requests(
-            suppliers=suppliers,
-            requests=requests,
-            sheets=_sheet_client(),
-            synced_at=dt.datetime.now(dt.UTC),
-        )
-        emit_heartbeat(job_name="request-sync-all", outcome="ok", counts=report)
+        try:
+            report = sync_all_requests(
+                suppliers=suppliers,
+                requests=requests,
+                sheets=_sheet_client(),
+                synced_at=dt.datetime.now(dt.UTC),
+            )
+            emit_heartbeat(job_name="request-sync-all", outcome="ok", counts=report)
+            write_heartbeat("xsource.sync", ok=True, detail=str(report))
+        except Exception as exc:
+            write_heartbeat("xsource.sync", ok=False, detail=str(exc))
+            raise
     typer.echo(report)
 
 

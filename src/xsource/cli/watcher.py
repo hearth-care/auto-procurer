@@ -9,6 +9,7 @@ from typing import Any
 
 import typer
 
+from xsource.beat import write_heartbeat
 from xsource.cli.cockpit import _AnthropicStructuredGateway
 from xsource.config import Config
 from xsource.obs import event as obs_event
@@ -120,8 +121,13 @@ def run(
 
     with run_session(trigger="watcher.run", args={"once": once, "cycles": cycles}):
         if max_cycles == 1:
-            report = process()
+            try:
+                report = process()
+            except Exception as exc:
+                write_heartbeat("xsource.watcher", ok=False, detail=str(exc))
+                raise
             emit_heartbeat(job_name="watcher", outcome="ok", counts=report)
+            write_heartbeat("xsource.watcher", ok=True, detail=str(report))
             typer.echo(report)
             return
 
@@ -143,6 +149,7 @@ def run(
             on_breaker_open=_on_breaker_open,
         )
         emit_heartbeat(job_name="watcher", outcome="ok", counts=last_report or {})
+        write_heartbeat("xsource.watcher", ok=True, detail=str(last_report or {}))
 
 
 @watcher_app.command("status")
