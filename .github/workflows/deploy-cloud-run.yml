@@ -136,10 +136,13 @@ jobs:
                 --uri "https://${XSOURCE_CLOUD_RUN_REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${XSOURCE_CLOUD_RUN_PROJECT}/jobs/${job_name}:run" \
                 --http-method POST \
                 --oauth-service-account-email "${XSOURCE_RUNTIME_SERVICE_ACCOUNT}"
+              # A newly-created scheduler starts paused so the first deploy doesn't run
+              # before it's verified. Existing schedulers are left untouched, so a
+              # re-deploy never stops a running worker (self-sustaining auto-deploy).
+              gcloud scheduler jobs pause ${scheduler_name} \
+                --project "${XSOURCE_CLOUD_RUN_PROJECT}" \
+                --location "${XSOURCE_CLOUD_RUN_REGION}"
             fi
-            gcloud scheduler jobs pause ${scheduler_name} \
-              --project "${XSOURCE_CLOUD_RUN_PROJECT}" \
-              --location "${XSOURCE_CLOUD_RUN_REGION}"
           }
 
           create_scheduler "${XSOURCE_WATCHER_SCHEDULER_NAME}" "${XSOURCE_WATCHER_SCHEDULE}" "${XSOURCE_WATCHER_JOB_NAME}"
