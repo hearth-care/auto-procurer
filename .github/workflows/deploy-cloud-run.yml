@@ -45,9 +45,11 @@ jobs:
       - uses: actions/checkout@v6
 
       - uses: google-github-actions/auth@v3
+        id: auth
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: access_token
 
       - uses: google-github-actions/setup-gcloud@v3
 
@@ -88,8 +90,9 @@ jobs:
           # artifactregistry.writer (not serviceusage/cloudbuild/staging-bucket
           # roles) — matching the rest of the fleet's deploy accounts.
           # Explicit token login — the docker-credential-gcloud helper does not pick up
-          # the WIF-impersonated identity in the runner, so the push goes unauthenticated.
-          gcloud auth print-access-token \
+          # the WIF-impersonated identity in the runner, and `gcloud auth print-access-token`
+          # has no active account under WIF. Use the access token the auth step emits.
+          echo '${{ steps.auth.outputs.access_token }}' \
             | docker login -u oauth2accesstoken --password-stdin "${XSOURCE_CLOUD_RUN_REGION}-docker.pkg.dev"
           docker build -t "${image}" .
           docker push "${image}"
