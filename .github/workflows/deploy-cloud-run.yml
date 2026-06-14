@@ -28,8 +28,6 @@ jobs:
       XSOURCE_GMAIL_TOKEN_SECRET: ${{ vars.XSOURCE_GMAIL_TOKEN_SECRET }}
       XSOURCE_SHEETS_TOKEN_SECRET: ${{ vars.XSOURCE_SHEETS_TOKEN_SECRET }}
       XSOURCE_ANTHROPIC_API_KEY_SECRET: ${{ vars.XSOURCE_ANTHROPIC_API_KEY_SECRET }}
-      XSOURCE_GOOGLE_MAPS_API_KEY_SECRET: ${{ vars.XSOURCE_GOOGLE_MAPS_API_KEY_SECRET }}
-      XSOURCE_COMPANIES_HOUSE_API_KEY_SECRET: ${{ vars.XSOURCE_COMPANIES_HOUSE_API_KEY_SECRET }}
       XSOURCE_WATCHER_JOB_NAME: ${{ vars.XSOURCE_WATCHER_JOB_NAME }}
       XSOURCE_SYNC_JOB_NAME: ${{ vars.XSOURCE_SYNC_JOB_NAME }}
       XSOURCE_SIGNALS_JOB_NAME: ${{ vars.XSOURCE_SIGNALS_JOB_NAME }}
@@ -96,14 +94,23 @@ jobs:
           deploy_job() {
             local job_name="$1"
             shift
+            local command="$1"
+            shift
+            # gcloud `run jobs deploy` does not honour a `-- args` remainder; pass the
+            # container command/args explicitly. Maps/Companies-House secrets are not
+            # provisioned and the worker runs without them, so only the 3 real secrets
+            # are mounted.
+            local args
+            args="$(IFS=,; echo "$*")"
             gcloud run jobs deploy ${job_name} \
               --project "${XSOURCE_CLOUD_RUN_PROJECT}" \
               --region "${XSOURCE_CLOUD_RUN_REGION}" \
               --image "${XSOURCE_IMAGE}" \
               --service-account "${XSOURCE_RUNTIME_SERVICE_ACCOUNT}" \
-              --set-env-vars "XSOURCE_RUNTIME_ENV=${XSOURCE_RUNTIME_ENV},XSOURCE_EMIT_SIGNALS=${XSOURCE_EMIT_SIGNALS},XSOURCE_OWN_EMAILS=${XSOURCE_OWN_EMAILS},XSOURCE_FLEET_BUCKET=${XSOURCE_FLEET_BUCKET},XSOURCE_STATE_PREFIX=${XSOURCE_STATE_PREFIX},XSOURCE_GMAIL_TOKEN_PATH=/secrets/gmail/token.json,XSOURCE_SHEETS_TOKEN_PATH=/secrets/sheets/token.json,ANTHROPIC_API_KEY_FILE=/secrets/anthropic/api-key,GOOGLE_MAPS_API_KEY_FILE=/secrets/google-maps/api-key,COMPANIES_HOUSE_API_KEY_FILE=/secrets/companies-house/api-key" \
-              --set-secrets "/secrets/gmail/token.json=${XSOURCE_GMAIL_TOKEN_SECRET}:latest,/secrets/sheets/token.json=${XSOURCE_SHEETS_TOKEN_SECRET}:latest,/secrets/anthropic/api-key=${XSOURCE_ANTHROPIC_API_KEY_SECRET}:latest,/secrets/google-maps/api-key=${XSOURCE_GOOGLE_MAPS_API_KEY_SECRET}:latest,/secrets/companies-house/api-key=${XSOURCE_COMPANIES_HOUSE_API_KEY_SECRET}:latest" \
-              -- "$@"
+              --set-env-vars "XSOURCE_RUNTIME_ENV=${XSOURCE_RUNTIME_ENV},XSOURCE_EMIT_SIGNALS=${XSOURCE_EMIT_SIGNALS},XSOURCE_OWN_EMAILS=${XSOURCE_OWN_EMAILS},XSOURCE_FLEET_BUCKET=${XSOURCE_FLEET_BUCKET},XSOURCE_STATE_PREFIX=${XSOURCE_STATE_PREFIX},XSOURCE_GMAIL_TOKEN_PATH=/secrets/gmail/token.json,XSOURCE_SHEETS_TOKEN_PATH=/secrets/sheets/token.json,ANTHROPIC_API_KEY_FILE=/secrets/anthropic/api-key" \
+              --set-secrets "/secrets/gmail/token.json=${XSOURCE_GMAIL_TOKEN_SECRET}:latest,/secrets/sheets/token.json=${XSOURCE_SHEETS_TOKEN_SECRET}:latest,/secrets/anthropic/api-key=${XSOURCE_ANTHROPIC_API_KEY_SECRET}:latest" \
+              --command "${command}" \
+              --args "${args}"
           }
 
           deploy_job "${XSOURCE_WATCHER_JOB_NAME}" xsource watcher run --cycles 4 --interval 60
@@ -129,10 +136,13 @@ jobs:
                 --uri "https://${XSOURCE_CLOUD_RUN_REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${XSOURCE_CLOUD_RUN_PROJECT}/jobs/${job_name}:run" \
                 --http-method POST \
                 --oauth-service-account-email "${XSOURCE_RUNTIME_SERVICE_ACCOUNT}"
+              # A newly-created scheduler starts paused so the first deploy doesn't run
+              # before it's verified. Existing schedulers are left untouched, so a
+              # re-deploy never stops a running worker (self-sustaining auto-deploy).
+              gcloud scheduler jobs pause ${scheduler_name} \
+                --project "${XSOURCE_CLOUD_RUN_PROJECT}" \
+                --location "${XSOURCE_CLOUD_RUN_REGION}"
             fi
-            gcloud scheduler jobs pause ${scheduler_name} \
-              --project "${XSOURCE_CLOUD_RUN_PROJECT}" \
-              --location "${XSOURCE_CLOUD_RUN_REGION}"
           }
 
           create_scheduler "${XSOURCE_WATCHER_SCHEDULER_NAME}" "${XSOURCE_WATCHER_SCHEDULE}" "${XSOURCE_WATCHER_JOB_NAME}"
