@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import os
 from functools import partial
 from pathlib import Path
 
@@ -56,8 +55,8 @@ def build_budget(cfg: Config, today: dt.date) -> Budget:
 
 
 def build_research_fns(cfg: Config):
-    maps_key = os.environ.get("GOOGLE_MAPS_API_KEY", "")
-    ch_key = os.environ.get("COMPANIES_HOUSE_API_KEY", "")
+    maps_key = secret_from_env("GOOGLE_MAPS_API_KEY")
+    ch_key = secret_from_env("COMPANIES_HOUSE_API_KEY")
     searcher = websearch.AnthropicSearcher(
         api_key=secret_from_env("ANTHROPIC_API_KEY"),
         model=cfg.model_chain[0],

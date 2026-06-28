@@ -12,9 +12,18 @@ def test_deploy_workflow_mounts_secret_files_and_existing_env_paths() -> None:
     assert "XSOURCE_GMAIL_TOKEN_SECRET" in config
     assert "XSOURCE_SHEETS_TOKEN_SECRET" in config
     assert "XSOURCE_ANTHROPIC_API_KEY_SECRET" in config
+    assert "XSOURCE_GOOGLE_MAPS_API_KEY_SECRET" in workflow
+    assert "XSOURCE_COMPANIES_HOUSE_API_KEY_SECRET" in workflow
     assert "/secrets/gmail/token.json=${XSOURCE_GMAIL_TOKEN_SECRET}:latest" in workflow
     assert "XSOURCE_GMAIL_TOKEN_PATH=/secrets/gmail/token.json" in workflow
     assert "ANTHROPIC_API_KEY_FILE=/secrets/anthropic/api-key" in workflow
+    assert "GOOGLE_MAPS_API_KEY_FILE=/secrets/google-maps/api-key" in workflow
+    assert "COMPANIES_HOUSE_API_KEY_FILE=/secrets/companies-house/api-key" in workflow
+    assert "/secrets/google-maps/api-key=${XSOURCE_GOOGLE_MAPS_API_KEY_SECRET}:latest" in workflow
+    assert (
+        "/secrets/companies-house/api-key=${XSOURCE_COMPANIES_HOUSE_API_KEY_SECRET}:latest"
+        in workflow
+    )
 
 
 def test_operator_provisioning_script_is_stdlib_and_prints_secret_commands() -> None:
