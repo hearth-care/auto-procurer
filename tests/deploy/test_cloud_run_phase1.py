@@ -19,7 +19,7 @@ def test_deploy_workflow_creates_paused_jobs_and_schedulers_from_config_keys() -
     config = Path("deploy/xsource-cloud-run.env.example").read_text()
 
     assert "google-github-actions/auth" in workflow
-    assert "gcloud run jobs deploy ${job_name}" in workflow
+    assert 'gcloud run jobs deploy "${job_name}"' in workflow
     assert "gcloud scheduler jobs pause ${scheduler_name}" in workflow
     assert "XSOURCE_CLOUD_RUN_PROJECT" in config
     assert "XSOURCE_WATCHER_JOB_NAME" in config
