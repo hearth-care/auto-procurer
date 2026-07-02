@@ -469,7 +469,7 @@ def test_request_list_warns_on_quarantine(monkeypatch, tmp_path):
 **Production call site (HR9):** `app.add_typer(book_app, name="book")` in
 `src/xsource/cli/__init__.py` (alongside the existing four sub-apps).
 
-- [ ] **Step 1 — failing tests** (`tests/cli/test_book_commands.py`; `_SUPPLIERS`/`_CSV` =
+- [x] **Step 1 — failing tests** (`tests/cli/test_book_commands.py`; `_SUPPLIERS`/`_CSV` =
   Fixtures A/B):
 
 ```python
@@ -511,9 +511,9 @@ def test_book_import_missing_file_exits_2(...):
   Plus in `tests/book/test_importer.py`: `test_import_dry_run_matches_wet_report` (dry report ==
   subsequent wet report; store untouched after dry) and
   `test_import_intra_csv_duplicate_skipped` (same name twice in one CSV → second row skipped).
-- [ ] **Step 2 — run, confirm RED:** `uv run pytest tests/cli/test_book_commands.py tests/book -q`
+- [x] **Step 2 — run, confirm RED:** `uv run pytest tests/cli/test_book_commands.py tests/book -q`
   → `No such command 'book'` and `TypeError: import_csv() got an unexpected keyword argument 'dry_run'`.
-- [ ] **Step 3 — implement:**
+- [x] **Step 3 — implement:**
   - `book/search.py`: add `format_supplier_row` exactly per the contract.
   - `book/importer.py`: signature
     `import_csv(path, store, today, *, dry_run: bool = False) -> dict[str, int]`; in the loop,
@@ -524,10 +524,10 @@ def test_book_import_missing_file_exits_2(...):
   - `cli/book.py`: `book_app = typer.Typer(help="Search, seed, and publish the supplier black book.")`;
     `search` and `import_` commands per the contract (quarantine stderr warning in `search`;
     `StoreOffline` → exit 1); mount in `cli/__init__.py`.
-- [ ] **Step 4 — focused verify:** same command → green; also
+- [x] **Step 4 — focused verify:** same command → green; also
   `uv run pytest tests/cli/test_equivalent_cli_parity.py -q` (still green — registry unchanged
   so far).
-- [ ] **Step 5 — commit:** `book: add 'xsource book search|import' CLI (shared dry-run parser)`
+- [x] **Step 5 — commit:** `book: add 'xsource book search|import' CLI (shared dry-run parser)`
 
 ### Task 3: wire the read-only walks — `request.list` + `book.search`
 
@@ -865,8 +865,8 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
 
 ## HANDOFF NOTES
 
-- Current phase: Task 1 complete; starting Task 2 (`book` CLI group — search + import).
-- Next concrete step: Task 2 Step 1 (failing tests for `xsource book search`, `xsource book import`, and `import_csv(dry_run=...)`).
-- Decisions taken: Task 1 followed the plan as written; quarantine counts are per-store-load and `request list` warns on stderr before sorted read-only rows.
-- Known failing tests: none after `uv run pytest tests/cli/test_request_list.py tests/store/test_jsonl.py -q` (`7 passed in 0.07s`).
+- Current phase: Task 2 complete; starting Task 3 (wire read-only cockpit walks for `request.list` and `book.search`).
+- Next concrete step: Task 3 Step 1 (failing walk tests plus shelf/preflight validators).
+- Decisions taken: Task 1 followed the plan as written; Task 2 added only `book search` and `book import` CLI, leaving `book publish` for Task 4 as planned.
+- Known failing tests: none after `uv run pytest tests/cli/test_book_commands.py tests/book -q` (`15 passed in 0.11s`) and `uv run pytest tests/cli/test_equivalent_cli_parity.py -q` (`8 passed in 0.08s`).
 - Dependencies/operator TODOs: none.
