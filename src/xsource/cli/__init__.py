@@ -8,6 +8,7 @@ prints help so pipes / scheduled jobs keep working. Sub-apps:
 * ``xsource watcher ...`` — poll Gmail for supplier replies.
 * ``xsource request ...`` — sync, trigger, follow up, and reorder procurement requests.
 * ``xsource invoice ...`` — capture, re-emit, write off, and sync invoice acknowledgements.
+* ``xsource book ...`` — search, import, and publish saved suppliers.
 """
 
 from __future__ import annotations
