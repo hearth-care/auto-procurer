@@ -228,46 +228,46 @@ doesn't have to ask):
 ## Full state set (HR5 — acceptance checkboxes; each row lands as a test in the named task)
 
 `request.list` (Task 1 CLI, Task 3 walk):
-- [ ] empty store → CLI prints nothing (exit 0); walk result `"0 open · 0 total"`
-- [ ] mixed open/closed fixture → rows + result pinned in the worked example below
-- [ ] corrupt line in `requests.jsonl` → stderr warning (CLI) / `· quarantined: 1 corrupt line(s)` suffix (walk)
-- [ ] store offline (local cache) → still lists; precondition detail `offline read-only cache`, not blocked
-- [ ] full drive: `CockpitDriver` reaches a `walk.result` frame with the pinned message (`test_request_list_walk_result_via_drive`)
+- [x] empty store → CLI prints nothing (exit 0); walk result `"0 open · 0 total"`
+- [x] mixed open/closed fixture → rows + result pinned in the worked example below
+- [x] corrupt line in `requests.jsonl` → stderr warning (CLI) / `· quarantined: 1 corrupt line(s)` suffix (walk)
+- [x] store offline (local cache) → still lists; precondition detail `offline read-only cache`, not blocked
+- [x] full drive: `CockpitDriver` reaches a `walk.result` frame with the pinned message (`test_request_list_walk_result_via_drive`)
 
 `book.search` (Task 2 CLI, Task 3 walk):
-- [ ] empty term → step fails `"No search term entered."`
-- [ ] no matches → result `"0 match(es) for 'roofing'"`; CLI prints nothing, exit 0
-- [ ] match by name / by category / by tag (three assertions; fixture below)
-- [ ] empty book → `"0 match(es) for '<term>'"`
-- [ ] corrupt line in `suppliers.jsonl` → quarantine suffix / stderr warning
+- [x] empty term → step fails `"No search term entered."`
+- [x] no matches → result `"0 match(es) for 'roofing'"`; CLI prints nothing, exit 0
+- [x] match by name / by category / by tag (three assertions; fixture below)
+- [x] empty book → `"0 match(es) for '<term>'"`
+- [x] corrupt line in `suppliers.jsonl` → quarantine suffix / stderr warning
 
 `book.import` (Task 2 CLI, Task 5 walk):
-- [ ] nonexistent path → CLI exit 2; walk File step fails `f"No such file: {path}"`
-- [ ] header-only CSV → `{'imported': 0, 'skipped': 0}`
-- [ ] duplicate against store + intra-CSV duplicate row → both counted in `skipped`
-- [ ] `--dry-run` / Preview → report identical to wet run, zero writes
-- [ ] gate declined / gate accepted (invariant cells #1, #3)
-- [ ] store offline → CLI exit 1; walk blocked at preflight (cell #4)
+- [x] nonexistent path → CLI exit 2; walk File step fails `f"No such file: {path}"`
+- [x] header-only CSV → `{'imported': 0, 'skipped': 0}`
+- [x] duplicate against store + intra-CSV duplicate row → both counted in `skipped`
+- [x] `--dry-run` / Preview → report identical to wet run, zero writes
+- [x] gate declined / gate accepted (invariant cells #1, #3)
+- [x] store offline → CLI exit 1; walk blocked at preflight (cell #4)
 
 `book.publish` (Task 4 flow+CLI, Task 5 walk):
-- [ ] empty book (cell #9)
-- [ ] first publish → create path, state written, `created: True`
-- [ ] re-publish → update path, no create (cell #7)
-- [ ] sheet gone → recreate + state overwrite (cell #8)
-- [ ] gate declined (cell #6)
-- [ ] Sheets token missing → walk blocked at preflight (`Sheets token` red)
-- [ ] `share_with` unset (`XSOURCE_STAFF_SHARE_GROUP` absent) → no `permissions.create` call
-- [ ] non-404 API error on update → step fails `"Publish failed: …"` (partial-failure (b))
+- [x] empty book (cell #9)
+- [x] first publish → create path, state written, `created: True`
+- [x] re-publish → update path, no create (cell #7)
+- [x] sheet gone → recreate + state overwrite (cell #8)
+- [x] gate declined (cell #6)
+- [x] Sheets token missing → walk blocked at preflight (`Sheets token` red)
+- [x] `share_with` unset (`XSOURCE_STAFF_SHARE_GROUP` absent) → no `permissions.create` call
+- [x] non-404 API error on update → step fails `"Publish failed: …"` (partial-failure (b))
 
 Cross-cutting:
-- [ ] every new `equivalent_cli` string parses (`--help` exit 0) — auto-covered by the existing
+- [x] every new `equivalent_cli` string parses (`--help` exit 0) — auto-covered by the existing
       parametrized `test_equivalent_cli_parses` the moment the registry carries the strings
-- [ ] preflight `equivalent_cli` == registry `equivalent_cli` for all four keys (HR6 validator)
-- [ ] shelf item order pinned for shelves A/B/C/D/E (HR6 validator)
-- [ ] `tests/test_cockpit_placeholders.py` updated: the four keys leave
+- [x] preflight `equivalent_cli` == registry `equivalent_cli` for all four keys (HR6 validator)
+- [x] shelf item order pinned for shelves A/B/C/D/E (HR6 validator)
+- [x] `tests/test_cockpit_placeholders.py` updated: the four keys leave
       `_PLACEHOLDER_STATUS_MARKERS`; remaining placeholders (`request.sync`, `watcher.status`,
       `partner.checkatrade`, `doctor`) keep their markers and drive tests
-- [ ] `test_render_model_parity` and `test_cockpit_drives_clean` still pass unmodified
+- [x] `test_render_model_parity` and `test_cockpit_drives_clean` still pass unmodified
 
 ## One source of truth + validators (HR6)
 
@@ -828,7 +828,7 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
 
 ### Task 7: full gates + RUNBOOK DELTA
 
-- [ ] Run the four canonical gates from the repo root, verbatim, and paste the output tails in
+- [x] Run the four canonical gates from the repo root, verbatim, and paste the output tails in
   the DONE comment: `uv run pytest -q` · `uv run ruff check .` · `uv run ruff format --check .`
   · `uv run mypy src` (expect ≥ 286 + ~30 new tests passing, 0 lint/type errors).
 - [ ] Post on `hearth-care/auto-orchestrator#196` and repeat verbatim in the DONE comment:
@@ -865,8 +865,8 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
 
 ## HANDOFF NOTES
 
-- Current phase: Task 6 complete; starting Task 7 (full gates, runbook delta, PR finish protocol).
-- Next concrete step: run canonical gates from repo root, then rebase onto latest `origin/main`.
+- Current phase: Task 7 gates complete; runbook delta and PR finish protocol still pending.
+- Next concrete step: commit/push final test+format+plan updates, post RUNBOOK DELTA, then mark PR ready and flip labels.
 - Decisions taken: Task 1 followed the plan as written; Task 2 added only `book search` and `book import` CLI; Task 3 wired `request.list` and `book.search` at their existing shelf positions; Task 4 added the publish flow/CLI; Task 5 wired the remaining gated book walks through `confirm_apply`; Task 6 updated only the new command lines and journey-map sections named by the plan.
-- Known failing tests: none after Task 6 grep verification (`request list`/`book search`/`book import`/`book publish` lines present; `Planned — not yet wired` count in `src/xsource/cli/cockpit.py` is `0`).
+- Known failing tests: none. Latest canonical gates: `uv run pytest -q` (`343 passed in 18.03s`), `uv run ruff check .` (`All checks passed!`), `uv run ruff format --check .` (`158 files already formatted`), `uv run mypy src` (`Success: no issues found in 62 source files`). `pre-commit run --all-files` is unavailable because this repo has no `.pre-commit-config.yaml`.
 - Dependencies/operator TODOs: none.

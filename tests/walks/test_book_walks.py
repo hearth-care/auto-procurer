@@ -95,6 +95,19 @@ def test_book_import_file_step_rejects_missing_path(tmp_path):
     assert result.message.startswith("No such file:")
 
 
+def test_book_import_preview_matches_report_and_writes_nothing(monkeypatch, tmp_path):
+    from xsource.cli import cockpit as cockpit_mod
+
+    store = _seeded_store(tmp_path)
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (store, object(), object()))
+    csv_file = tmp_path / "book.csv"
+    csv_file.write_text(_CSV)
+    result = cockpit_mod._book_import_preview_step(_ctx([]), {"csv_path": str(csv_file)})
+    assert result.ok is True
+    assert result.data["report"] == {"imported": 1, "skipped": 1}
+    assert [s.name for s in store.all()] == ["Beta Heating"]
+
+
 def test_book_write_preflight_blocks_offline(monkeypatch):
     from xsource.cli import cockpit as cockpit_mod
 
@@ -195,3 +208,16 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
     result = cockpit_mod._book_publish_preview_step(_ctx([]), {})
     assert result.ok is False
     assert result.message == "No suppliers in the black book."
+
+
+def test_book_publish_preflight_blocks_missing_sheets_token(monkeypatch, tmp_path):
+    from xsource.cli import cockpit as cockpit_mod
+
+    monkeypatch.delenv("XSOURCE_SHEETS_TOKEN_PATH", raising=False)
+    store = _publish_store(tmp_path)
+    store.offline = False
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (store, object(), object()))
+    rows = cockpit_mod._publish_preconditions(_ctx([]))
+    sheets = next(row for row in rows if row.label == "Sheets token")
+    assert sheets.ok is False
+    assert sheets.detail == "missing"

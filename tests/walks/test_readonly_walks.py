@@ -80,6 +80,47 @@ def test_request_list_step_summary_and_rows(monkeypatch, tmp_path):
     assert result.data["summary"] == "1 open · 2 total"
 
 
+def test_request_list_empty_store_summary(monkeypatch, tmp_path):
+    from xsource.cli import cockpit as cockpit_mod
+
+    store = JsonlStore(tmp_path / "requests.jsonl", Request)
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (object(), store, object()))
+    result = cockpit_mod._request_list_step(_ctx([]), {})
+    assert result.ok is True
+    assert result.data["summary"] == "0 open · 0 total"
+
+
+def test_request_list_walk_surfaces_quarantine(monkeypatch, tmp_path):
+    from xsource.cli import cockpit as cockpit_mod
+
+    path = tmp_path / "requests.jsonl"
+    path.write_text(
+        '{"id": "r-0001", "created_at": "2026-06-20T10:00:00+00:00", '
+        '"raw_need": "fence repair"}\n'
+        "not json\n"
+    )
+    store = JsonlStore(path, Request)
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (object(), store, object()))
+    result = cockpit_mod._request_list_step(_ctx([]), {})
+    assert result.data["summary"] == "1 open · 1 total · quarantined: 1 corrupt line(s)"
+
+
+def test_readonly_preconditions_allow_offline_cache(monkeypatch):
+    from xsource.cli import cockpit as cockpit_mod
+
+    class _Offline:
+        offline = True
+
+    monkeypatch.setattr(
+        cockpit_mod,
+        "build_stores",
+        lambda cfg: (_Offline(), _Offline(), _Offline()),
+    )
+    rows = cockpit_mod._readonly_preconditions(_ctx([]))
+    assert rows[0].ok is True
+    assert rows[0].detail == "offline read-only cache"
+
+
 def test_search_walk_surfaces_quarantine(monkeypatch, tmp_path):
     from xsource.cli import cockpit as cockpit_mod
 
@@ -88,10 +129,26 @@ def test_search_walk_surfaces_quarantine(monkeypatch, tmp_path):
     store = JsonlStore(path, Supplier)
     monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (store, object(), object()))
     result = cockpit_mod._book_search_results_step(_ctx([]), {"term": "alpha"})
-    assert (
-        result.data["summary"]
-        == "1 match(es) for 'alpha' · quarantined: 1 corrupt line(s)"
-    )
+    assert result.data["summary"] == "1 match(es) for 'alpha' · quarantined: 1 corrupt line(s)"
+
+
+def test_search_walk_no_matches(monkeypatch, tmp_path):
+    from xsource.cli import cockpit as cockpit_mod
+
+    store = JsonlStore(tmp_path / "suppliers.jsonl", Supplier)
+    store.upsert(_alpha_supplier())
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (store, object(), object()))
+    result = cockpit_mod._book_search_results_step(_ctx([]), {"term": "roofing"})
+    assert result.data["summary"] == "0 match(es) for 'roofing'"
+
+
+def test_search_walk_empty_book(monkeypatch, tmp_path):
+    from xsource.cli import cockpit as cockpit_mod
+
+    store = JsonlStore(tmp_path / "suppliers.jsonl", Supplier)
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (store, object(), object()))
+    result = cockpit_mod._book_search_results_step(_ctx([]), {"term": "heating"})
+    assert result.data["summary"] == "0 match(es) for 'heating'"
 
 
 def test_search_term_step_rejects_empty():
@@ -120,6 +177,7 @@ def test_readonly_walks_never_upsert(monkeypatch, tmp_path):
 
 def test_request_list_walk_result_via_drive(monkeypatch, tmp_path):
     from clonway_cockpit.agent import CockpitDriver
+
     from xsource.cli import cockpit as cockpit_mod
 
     monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))

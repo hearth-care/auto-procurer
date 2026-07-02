@@ -64,6 +64,4 @@ def test_request_list_warns_on_quarantine(monkeypatch, tmp_path):
     result = runner.invoke(app, ["request", "list"])
     assert result.exit_code == 0
     assert "warning: 1 corrupt line(s) quarantined in requests.jsonl" in result.stderr
-    assert result.stdout.splitlines() == [
-        "r-0001\topen\t2026-06-20T10:00:00+00:00\tfence repair"
-    ]
+    assert result.stdout.splitlines() == ["r-0001\topen\t2026-06-20T10:00:00+00:00\tfence repair"]

@@ -91,9 +91,7 @@ def publish_directory(
         try:
             client.update_directory_sheet(sheet_id, values)
         except DirectorySheetGone:
-            return _create_directory_sheet(
-                state_file, client, title, values, folder_id, share_with
-            )
+            return _create_directory_sheet(state_file, client, title, values, folder_id, share_with)
         return {
             "sheet_id": sheet_id,
             "sheet_url": state.get("sheet_url", ""),

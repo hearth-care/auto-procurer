@@ -42,9 +42,7 @@ def import_csv(
                         id=store.next_id("s"),
                         name=name,
                         categories=[c for c in [(row.get("category") or "").strip()] if c],
-                        tags=[
-                            t.strip() for t in (row.get("tags") or "").split(";") if t.strip()
-                        ],
+                        tags=[t.strip() for t in (row.get("tags") or "").split(";") if t.strip()],
                         phone=normalise_uk_phone(row.get("phone") or ""),
                         email=(row.get("email") or "").strip() or None,
                         source="import",
