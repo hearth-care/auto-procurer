@@ -22,8 +22,9 @@ from clonway_cockpit.state import CockpitState, NeedsItem, Pill
 from clonway_cockpit.walk import Precondition, Step, StepResult, confirm_apply, make_walk_handler
 from rich.console import Console, RenderableType
 
-from xsource.book.search import find_matches
+from xsource.book.search import find_matches, format_supplier_row, search_suppliers
 from xsource.budget import Budget
+from xsource.cli.request import format_request_row
 from xsource.config import Config
 from xsource.invoices.capture import validate_iso_date
 from xsource.research.candidates import Candidate
@@ -36,6 +37,11 @@ from xsource.store.remote import SyncedStore, get_offline_reason
 from xsource.wiring import build_budget, build_research_fns, build_stores
 
 _APP_LABEL = "xsource"
+
+_CLI_REQUEST_LIST = "xsource request list"
+_CLI_BOOK_SEARCH = "xsource book search"
+_CLI_BOOK_IMPORT = "xsource book import"
+_CLI_BOOK_PUBLISH = "xsource book publish"
 
 _SHELVES: dict[str, str] = {
     "A": "New request",
@@ -61,6 +67,16 @@ _INVOICE_CAPTURE_BLAST = BlastRadius(
     reversible="Invoice and price-history rows can be corrected by operator edit.",
 )
 
+_REQUEST_LIST_BLAST = BlastRadius(
+    summary="Writes nothing.",
+    reversible="No write is performed.",
+)
+
+_BOOK_SEARCH_BLAST = BlastRadius(
+    summary="Writes nothing.",
+    reversible="No write is performed.",
+)
+
 
 def _status() -> dict:
     cfg = Config.from_env()
@@ -81,6 +97,29 @@ def _status() -> dict:
 
 def _store_online(*stores) -> bool:
     return bool(stores) and all(store is not None and not store.offline for store in stores)
+
+
+def _quarantine_suffix(store) -> str:
+    quarantined = getattr(store, "quarantined", 0)
+    if not quarantined:
+        return ""
+    return f" · quarantined: {quarantined} corrupt line(s)"
+
+
+def _readonly_preconditions(ctx: WizardContext) -> list[Precondition]:
+    try:
+        suppliers, requests_, invoices = build_stores(Config.from_env())
+    except Exception:
+        return [Precondition("Store loaded", False, "store unavailable")]
+    stores = (suppliers, requests_, invoices)
+    offline = any(getattr(store, "offline", False) for store in stores)
+    return [
+        Precondition(
+            "Store loaded",
+            True,
+            "offline read-only cache" if offline else "GCS store available",
+        )
+    ]
 
 
 def _preconditions(ctx: WizardContext) -> list[Precondition]:
@@ -728,6 +767,65 @@ _invoice_capture_handler = make_walk_handler(
 )
 
 
+def _request_list_step(ctx: WizardContext, bag: dict) -> StepResult:
+    _suppliers, requests_, _invoices = build_stores(Config.from_env())
+    records = sorted(requests_.all(), key=lambda r: r.id)
+    open_n = sum(1 for request in records if request.status == "open")
+    total_n = len(records)
+    rows = [format_request_row(request) for request in records]
+    return StepResult(
+        ok=True,
+        data={
+            "summary": f"{open_n} open · {total_n} total{_quarantine_suffix(requests_)}",
+            "rows": rows,
+        },
+    )
+
+
+def _book_search_term_step(ctx: WizardContext, bag: dict) -> StepResult:
+    term = ctx.input_fn("Search term: ").strip() if ctx.input_fn else ""
+    if not term:
+        return StepResult(ok=False, message="No search term entered.")
+    return StepResult(ok=True, data={"term": term})
+
+
+def _book_search_results_step(ctx: WizardContext, bag: dict) -> StepResult:
+    suppliers, _requests, _invoices = build_stores(Config.from_env())
+    term = bag["term"]
+    matches = search_suppliers(suppliers.all(), term)
+    rows = [format_supplier_row(supplier) for supplier in matches]
+    return StepResult(
+        ok=True,
+        data={
+            "summary": f"{len(matches)} match(es) for '{term}'{_quarantine_suffix(suppliers)}",
+            "rows": rows,
+        },
+    )
+
+
+_request_list_handler = make_walk_handler(
+    title="List procurement requests",
+    steps=[Step(label="List", run=_request_list_step)],
+    blast_radius=_REQUEST_LIST_BLAST,
+    preconditions_fn=_readonly_preconditions,
+    equivalent_cli=_CLI_REQUEST_LIST,
+    total=2,
+)
+
+
+_book_search_handler = make_walk_handler(
+    title="Search black book",
+    steps=[
+        Step(label="Term", run=_book_search_term_step),
+        Step(label="Results", run=_book_search_results_step),
+    ],
+    blast_radius=_BOOK_SEARCH_BLAST,
+    preconditions_fn=_readonly_preconditions,
+    equivalent_cli=_CLI_BOOK_SEARCH,
+    total=3,
+)
+
+
 def _reorder_proposal_step(ctx: WizardContext, bag: dict) -> StepResult:
     """Show the reorder proposal for a recurring supplier and capture the decision."""
     from xsource.p4.reorder import build_reorder_proposal
@@ -944,21 +1042,31 @@ def register_all() -> None:
             blast_radius=_INVOICE_CAPTURE_BLAST,
         )
     )
+    register_capability(
+        CapabilitySpec(
+            key="request.list",
+            shelf="B",
+            title="List requests",
+            summary="List procurement requests from the store. Read-only.",
+            equivalent_cli=_CLI_REQUEST_LIST,
+            run=_request_list_handler,
+            blast_radius=_REQUEST_LIST_BLAST,
+            money_movement=False,
+        )
+    )
+    register_capability(
+        CapabilitySpec(
+            key="book.search",
+            shelf="C",
+            title="Search black book",
+            summary="Search saved suppliers by name, category, or tag. Read-only.",
+            equivalent_cli=_CLI_BOOK_SEARCH,
+            run=_book_search_handler,
+            blast_radius=_BOOK_SEARCH_BLAST,
+            money_movement=False,
+        )
+    )
     for key, shelf, title, summary, cli in (
-        (
-            "request.list",
-            "B",
-            "List requests",
-            "Show open and recent procurement requests. Planned — not yet wired.",
-            None,
-        ),
-        (
-            "book.search",
-            "C",
-            "Search black book",
-            "Search saved suppliers by name, category, or tag. Planned — not yet wired.",
-            None,
-        ),
         (
             "book.import",
             "C",

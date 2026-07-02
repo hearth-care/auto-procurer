@@ -74,3 +74,11 @@ def test_cockpit_only_walk_preflight_carries_no_fictional_cli(cap_key: str) -> N
     """Driving request.new and request.outreach to preflight: no stale fictional command."""
     cli = _preflight_equivalent_cli(cap_key)
     assert cli not in _FICTIONAL, f"{cap_key} preflight still emits stale equivalent_cli={cli!r}"
+
+
+@pytest.mark.parametrize("cap_key", ["request.list", "book.search"])
+def test_wired_walk_preflight_cli_matches_registry(cap_key: str) -> None:
+    cockpit.register_all()
+    spec = {c.key: c for c in registry.get_capabilities()}[cap_key]
+    assert spec.equivalent_cli, f"{cap_key} should carry a real CLI string now"
+    assert _preflight_equivalent_cli(cap_key) == spec.equivalent_cli

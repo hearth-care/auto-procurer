@@ -539,7 +539,7 @@ def test_book_import_missing_file_exits_2(...):
 `run=None` loop and become full `register_capability(CapabilitySpec(..., run=<handler>,
 equivalent_cli=<constant>))` entries **at the same positions** (B item 2, C item 1).
 
-- [ ] **Step 1 — failing tests** (`tests/walks/test_readonly_walks.py`, house `_ctx` helper from
+- [x] **Step 1 — failing tests** (`tests/walks/test_readonly_walks.py`, house `_ctx` helper from
   `tests/walks/test_invoice_capture_walk.py`):
 
 ```python
@@ -619,19 +619,19 @@ def test_shelf_item_order_is_stable():
     assert by_shelf["E"] == ["request.outreach", "request.followup", "watcher.status"]
 ```
 
-- [ ] **Step 2 — run, confirm RED:** `uv run pytest tests/walks/test_readonly_walks.py tests/test_cockpit_placeholders.py tests/cli/test_equivalent_cli_parity.py -q`
+- [x] **Step 2 — run, confirm RED:** `uv run pytest tests/walks/test_readonly_walks.py tests/test_cockpit_placeholders.py tests/cli/test_equivalent_cli_parity.py -q`
   → `AttributeError: module … has no attribute '_request_list_step'`; parity test fails on
   `spec.equivalent_cli` empty.
-- [ ] **Step 3 — implement:** add the `_CLI_*` constants, `_quarantine_suffix`,
+- [x] **Step 3 — implement:** add the `_CLI_*` constants, `_quarantine_suffix`,
   `_readonly_preconditions`, `_request_list_step`, `_book_search_term_step`,
   `_book_search_results_step`, `_REQUEST_LIST_BLAST`, `_BOOK_SEARCH_BLAST`, the two
   `make_walk_handler` handlers (`total=2` / `total=3`), and swap the two registry entries in
   place (loop shrinks; order preserved). Steps import `format_request_row` /
   `format_supplier_row` — no second row format. Update `_PLACEHOLDER_STATUS_MARKERS`: remove
   `request.list` + `book.search` (leave the other two until Task 5) and fix the docstring count.
-- [ ] **Step 4 — focused verify:** same command → green; then
+- [x] **Step 4 — focused verify:** same command → green; then
   `uv run pytest tests/test_cockpit_contract.py -q` (render/model parity + drives-clean intact).
-- [ ] **Step 5 — commit:** `cockpit: wire request.list + book.search walks at their shelf positions`
+- [x] **Step 5 — commit:** `cockpit: wire request.list + book.search walks at their shelf positions`
 
 ### Task 4: staff-directory publish flow + `xsource book publish`
 
@@ -865,8 +865,8 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
 
 ## HANDOFF NOTES
 
-- Current phase: Task 2 complete; starting Task 3 (wire read-only cockpit walks for `request.list` and `book.search`).
-- Next concrete step: Task 3 Step 1 (failing walk tests plus shelf/preflight validators).
-- Decisions taken: Task 1 followed the plan as written; Task 2 added only `book search` and `book import` CLI, leaving `book publish` for Task 4 as planned.
-- Known failing tests: none after `uv run pytest tests/cli/test_book_commands.py tests/book -q` (`15 passed in 0.11s`) and `uv run pytest tests/cli/test_equivalent_cli_parity.py -q` (`8 passed in 0.08s`).
+- Current phase: Task 3 complete; starting Task 4 (staff-directory publish flow + `xsource book publish`).
+- Next concrete step: Task 4 Step 1 (failing publish flow, sheet client, and CLI empty-book tests).
+- Decisions taken: Task 1 followed the plan as written; Task 2 added only `book search` and `book import` CLI; Task 3 wired `request.list` and `book.search` at their existing shelf positions and kept import/publish placeholders for Task 5.
+- Known failing tests: none after `uv run pytest tests/walks/test_readonly_walks.py tests/test_cockpit_placeholders.py tests/cli/test_equivalent_cli_parity.py -q` (`21 passed in 0.19s`) and `uv run pytest tests/test_cockpit_contract.py -q` (`2 passed in 0.04s`).
 - Dependencies/operator TODOs: none.
