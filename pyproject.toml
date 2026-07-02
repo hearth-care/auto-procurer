@@ -41,9 +41,6 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra --strict-markers"
-markers = [
-    "horizon_stub: marks the xfail test guarding the empty @scan_horizon stub",
-]
 
 [tool.ruff]
 line-length = 100
