@@ -831,13 +831,13 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
 - [x] Run the four canonical gates from the repo root, verbatim, and paste the output tails in
   the DONE comment: `uv run pytest -q` · `uv run ruff check .` · `uv run ruff format --check .`
   · `uv run mypy src` (expect ≥ 286 + ~30 new tests passing, 0 lint/type errors).
-- [ ] Post on `hearth-care/auto-orchestrator#196` and repeat verbatim in the DONE comment:
+- [x] Post on `hearth-care/auto-orchestrator#196` and repeat verbatim in the DONE comment:
   `RUNBOOK DELTA (auto-procurer): new operator surfaces — 'xsource request list' and 'xsource
   book search|import|publish' CLI commands; cockpit shelves B/C/D now run live walks for
   request.list, book.search, book.import, book.publish. Import and publish are gated writes
   behind confirm-apply (publish shares the staff directory read-only); search/list are
   read-only.`
-- [ ] `gh pr ready` + flip label to `agent:needs-qa` + single DONE comment per the worker
+- [x] `gh pr ready` + flip label to `agent:needs-qa` + single DONE comment per the worker
   contract.
 
 ---
@@ -865,8 +865,8 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
 
 ## HANDOFF NOTES
 
-- Current phase: Task 7 gates complete; runbook delta and PR finish protocol still pending.
-- Next concrete step: commit/push final test+format+plan updates, post RUNBOOK DELTA, then mark PR ready and flip labels.
+- Current phase: Task 7 complete; DONE comment is the remaining external handoff action.
+- Next concrete step: post DONE comment with shipped phases, deviations, operator TODOs, and gate tails.
 - Decisions taken: Task 1 followed the plan as written; Task 2 added only `book search` and `book import` CLI; Task 3 wired `request.list` and `book.search` at their existing shelf positions; Task 4 added the publish flow/CLI; Task 5 wired the remaining gated book walks through `confirm_apply`; Task 6 updated only the new command lines and journey-map sections named by the plan.
 - Known failing tests: none. Latest canonical gates: `uv run pytest -q` (`343 passed in 18.03s`), `uv run ruff check .` (`All checks passed!`), `uv run ruff format --check .` (`158 files already formatted`), `uv run mypy src` (`Success: no issues found in 62 source files`). `pre-commit run --all-files` is unavailable because this repo has no `.pre-commit-config.yaml`.
 - Dependencies/operator TODOs: none.
