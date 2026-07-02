@@ -37,6 +37,12 @@ xsource request list          # list procurement requests, read-only
 xsource book search TERM      # search saved suppliers, read-only
 xsource book import CSV [--dry-run]  # import suppliers from CSV, preview with --dry-run
 xsource book publish          # publish the staff supplier directory
+xsource invoice add           # record a supplier invoice (never pays money)
+xsource invoice import        # bulk-import invoice rows from a CSV
+xsource invoice list          # list captured invoices
+xsource invoice reemit        # correct a rejected invoice and re-emit it
+xsource invoice write-off     # mark a rejected invoice written off
+xsource invoice sync-acks     # ingest payment-required acknowledgements
 ```
 
 `xsource` bare on a TTY opens the cockpit. `xsource --agent-stdio` serves it
@@ -64,8 +70,7 @@ not send email.
 
 ## Signals
 
-`xsource signals scan` calls `scan_xsource_horizon`, composed from four
-horizon builders:
+`xsource signals scan` calls `scan_xsource_horizon`, composed from seven horizon builders:
 
 - `build_chase_quote_signals` — emits a chase signal for any open request
   where all shortlisted suppliers were asked but none have replied and the
@@ -76,6 +81,13 @@ horizon builders:
   open for more than one watcher poll cycle with no reply seen.
 - `build_store_offline_signals` — emits an alert when the GCS store is
   offline and there are open requests that need attention.
+- `build_payment_required_signals` — emits a payment-required signal for every
+  invoice still in `captured`/`emitted`/`re-emitted`, escalating to error when
+  the due date has passed.
+- `build_invoice_variance_signals` — emits a review signal when an invoice
+  carries an unresolved quoted-vs-invoiced variance.
+- `build_rejected_invoice_signals` — emits a fix-it signal for each rejected
+  invoice, pointing at `xsource invoice reemit`/`write-off`.
 
 `XSOURCE_EMIT_SIGNALS=1` enables the flag; leaving it unset prints
 `signals: disabled`. `emitted 0` means no horizon items are due today
@@ -123,6 +135,16 @@ shelf (G) at cockpit start.
 | `XSOURCE_STATE_PREFIX` | no | `state/xsource` | GCS prefix for state objects |
 | `XSOURCE_DRIVE_FOLDER_ID` | no | — | Google Drive folder for published shortlists |
 | `XSOURCE_STAFF_SHARE_GROUP` | no | — | Google Group address to share published sheets with |
+| `XSOURCE_STATE_DIR` | no | `~/.claude-inbox/xsource/state` | Local state directory (hydrated from GCS in Cloud Run) |
+| `XSOURCE_SHORTLIST_N` | no | `5` | Shortlist size per request |
+| `XSOURCE_MAX_PLACES_CALLS` | no | `10` | Places-search call cap per research run |
+| `XSOURCE_MAX_WEB_SEARCHES` | no | `8` | Web-search call cap per research run |
+| `XSOURCE_POLL_SECONDS` | no | `60` | Watcher poll interval |
+| `XSOURCE_MAX_BACKOFF_SECONDS` | no | `300` | Watcher error-backoff ceiling |
+| `XSOURCE_BREAKER_THRESHOLD` | no | `10` | Watcher circuit-breaker threshold |
+| `XSOURCE_RESEARCH_MODEL` | no | — | Single-model fallback when `XSOURCE_MODEL_CHAIN` is unset |
+| `XSOURCE_OPERATOR_DISPLAY_NAME` | no | `Milo` | Name signed into follow-up drafts |
+| `COMPANIES_HOUSE_API_KEY` | no | — | Enables the Companies House sanity check during research |
 
 In Cloud Run, secrets are mounted as files; the `*_TOKEN_PATH` and `*_FILE`
 env vars point to those mount paths. See `deploy/xsource-cloud-run.env.example`
@@ -132,10 +154,12 @@ for the full variable list including Cloud Run–specific scheduler and job name
 
 ```bash
 uv sync
-uv run pytest -q          # full test suite
-uv run ruff check .       # linting
-uv run ruff format .      # formatting
+uv run pytest -q                # full test suite
+uv run ruff check .             # linting
+uv run ruff format --check .    # formatting (CI mode; drop --check to write)
+uv run mypy src                 # types
 ```
 
-Pre-commit runs ruff, ruff-format, and mypy on every commit. The full pytest
-suite is the CI gate — run it locally on demand, not on every commit.
+These four are exactly what CI runs on every push to `main` and in the merge
+queue (`.github/workflows/ci.yml`). There are no local commit hooks in this repo —
+run the gates yourself before pushing.
