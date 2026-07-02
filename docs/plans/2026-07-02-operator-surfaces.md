@@ -814,17 +814,17 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
 
 **Files:** modify `README.md`, `docs/cockpit-journeys.md`.
 
-- [ ] README "CLI surface" fence: append exactly four lines —
+- [x] README "CLI surface" fence: append exactly four lines —
   `xsource request list` (list procurement requests, read-only), `xsource book search TERM`,
   `xsource book import CSV [--dry-run]`, `xsource book publish` — matching the command help
   strings. Touch nothing else in README (doc-truth PR owns the rest).
-- [ ] `docs/cockpit-journeys.md`: update the **Requests**, **Black book**, and **Publish**
+- [x] `docs/cockpit-journeys.md`: update the **Requests**, **Black book**, and **Publish**
   journey sections — the four capabilities move from "placeholder" to "implemented", each
   naming its walk steps, gate (or read-only), and CLI twin; remove rows 1, 4, 5, 6 from the
   Follow-up scoping table (rows 2, 3, 7, 8 remain, renumbered 1–4).
-- [ ] Verification (paste output): `grep -n "book search\|book import\|book publish\|request list" README.md docs/cockpit-journeys.md`
+- [x] Verification (paste output): `grep -n "book search\|book import\|book publish\|request list" README.md docs/cockpit-journeys.md`
   and `grep -c "Planned — not yet wired" src/xsource/cli/cockpit.py` → `0`.
-- [ ] **Commit:** `docs: cockpit journeys + README reflect wired request.list/book walks`
+- [x] **Commit:** `docs: cockpit journeys + README reflect wired request.list/book walks`
 
 ### Task 7: full gates + RUNBOOK DELTA
 
@@ -865,8 +865,8 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
 
 ## HANDOFF NOTES
 
-- Current phase: Task 5 complete; starting Task 6 (operator docs for the new surfaces).
-- Next concrete step: Task 6 README and cockpit journey updates, then grep verification.
-- Decisions taken: Task 1 followed the plan as written; Task 2 added only `book search` and `book import` CLI; Task 3 wired `request.list` and `book.search` at their existing shelf positions; Task 4 added the publish flow/CLI; Task 5 wired the remaining gated book walks through `confirm_apply`.
-- Known failing tests: none after `uv run pytest tests/walks/test_book_walks.py tests/cli/test_equivalent_cli_parity.py -q` (`25 passed in 1.08s`) and `uv run pytest tests/walks tests/test_cockpit_placeholders.py tests/cli/test_equivalent_cli_parity.py tests/test_cockpit_contract.py -q` (`47 passed in 0.15s`).
+- Current phase: Task 6 complete; starting Task 7 (full gates, runbook delta, PR finish protocol).
+- Next concrete step: run canonical gates from repo root, then rebase onto latest `origin/main`.
+- Decisions taken: Task 1 followed the plan as written; Task 2 added only `book search` and `book import` CLI; Task 3 wired `request.list` and `book.search` at their existing shelf positions; Task 4 added the publish flow/CLI; Task 5 wired the remaining gated book walks through `confirm_apply`; Task 6 updated only the new command lines and journey-map sections named by the plan.
+- Known failing tests: none after Task 6 grep verification (`request list`/`book search`/`book import`/`book publish` lines present; `Planned — not yet wired` count in `src/xsource/cli/cockpit.py` is `0`).
 - Dependencies/operator TODOs: none.
