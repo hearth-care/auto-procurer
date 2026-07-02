@@ -742,7 +742,7 @@ def test_publish_malformed_state_treated_as_absent(tmp_path):
 (C item 2, D item 1) become full registrations with `run=` handlers; the parity test's
 parametrize list reaches its final four-key shape (Task 3 Step 1).
 
-- [ ] **Step 1 — failing tests** (`tests/walks/test_book_walks.py`):
+- [x] **Step 1 — failing tests** (`tests/walks/test_book_walks.py`):
 
 ```python
 def test_book_import_declined_writes_nothing(monkeypatch, tmp_path):
@@ -797,8 +797,8 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
     ...  # empty suppliers → ok=False, "No suppliers in the black book."
 ```
 
-- [ ] **Step 2 — run, confirm RED:** `uv run pytest tests/walks/test_book_walks.py tests/cli/test_equivalent_cli_parity.py -q`.
-- [ ] **Step 3 — implement:** `_book_write_preconditions`, `_publish_preconditions`,
+- [x] **Step 2 — run, confirm RED:** `uv run pytest tests/walks/test_book_walks.py tests/cli/test_equivalent_cli_parity.py -q`.
+- [x] **Step 3 — implement:** `_book_write_preconditions`, `_publish_preconditions`,
   `_book_import_file_step` / `_book_import_preview_step` (calls `import_csv(..., dry_run=True)`)
   / `_book_import_apply_step` (gate → wet `import_csv`; `StoreOffline` → `ok=False`),
   `_book_publish_preview_step` / `_book_publish_apply_step` (gate → `publish_directory` via
@@ -807,8 +807,8 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
   last two placeholder entries in place. Remove `book.import`/`book.publish` from
   `_PLACEHOLDER_STATUS_MARKERS` (leaving `request.sync`, `watcher.status`,
   `partner.checkatrade`, `doctor`); extend the parity parametrize to the final four keys.
-- [ ] **Step 4 — focused verify:** `uv run pytest tests/walks tests/test_cockpit_placeholders.py tests/cli/test_equivalent_cli_parity.py tests/test_cockpit_contract.py -q` → green.
-- [ ] **Step 5 — commit:** `cockpit: wire gated book.import + book.publish walks (confirm-apply writes)`
+- [x] **Step 4 — focused verify:** `uv run pytest tests/walks tests/test_cockpit_placeholders.py tests/cli/test_equivalent_cli_parity.py tests/test_cockpit_contract.py -q` → green.
+- [x] **Step 5 — commit:** `cockpit: wire gated book.import + book.publish walks (confirm-apply writes)`
 
 ### Task 6: operator docs for the new surfaces
 
@@ -865,8 +865,8 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
 
 ## HANDOFF NOTES
 
-- Current phase: Task 4 complete; starting Task 5 (wire gated `book.import` and `book.publish` walks).
-- Next concrete step: Task 5 Step 1 (failing gated walk tests plus final four-key equivalent-CLI validator).
-- Decisions taken: Task 1 followed the plan as written; Task 2 added only `book search` and `book import` CLI; Task 3 wired `request.list` and `book.search` at their existing shelf positions; Task 4 added the publish flow/CLI while leaving the cockpit publish walk placeholder for Task 5.
-- Known failing tests: none after `uv run pytest tests/book/test_publish_flow.py tests/sheet/test_client_directory.py tests/cli/test_book_commands.py -q` (`17 passed in 0.08s`) and `uv run mypy src` (`Success: no issues found in 62 source files`).
+- Current phase: Task 5 complete; starting Task 6 (operator docs for the new surfaces).
+- Next concrete step: Task 6 README and cockpit journey updates, then grep verification.
+- Decisions taken: Task 1 followed the plan as written; Task 2 added only `book search` and `book import` CLI; Task 3 wired `request.list` and `book.search` at their existing shelf positions; Task 4 added the publish flow/CLI; Task 5 wired the remaining gated book walks through `confirm_apply`.
+- Known failing tests: none after `uv run pytest tests/walks/test_book_walks.py tests/cli/test_equivalent_cli_parity.py -q` (`25 passed in 1.08s`) and `uv run pytest tests/walks tests/test_cockpit_placeholders.py tests/cli/test_equivalent_cli_parity.py tests/test_cockpit_contract.py -q` (`47 passed in 0.15s`).
 - Dependencies/operator TODOs: none.

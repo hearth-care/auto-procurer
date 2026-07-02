@@ -25,8 +25,6 @@ _BUILD_ONLY_MARKER = "Build-only"
 _LIVE_MARKER = "Live"
 
 _PLACEHOLDER_STATUS_MARKERS = {
-    "book.import": _PLANNED_MARKER,
-    "book.publish": _PLANNED_MARKER,
     "request.sync": _CLI_MARKER,
     "watcher.status": _CLI_MARKER,
     "partner.checkatrade": _BUILD_ONLY_MARKER,
