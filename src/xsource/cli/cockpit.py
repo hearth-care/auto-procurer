@@ -20,10 +20,14 @@ from clonway_cockpit.registry import (
 )
 from clonway_cockpit.state import CockpitState, NeedsItem, Pill
 from clonway_cockpit.walk import Precondition, Step, StepResult, confirm_apply, make_walk_handler
+from google.oauth2.credentials import Credentials
 from rich.console import Console, RenderableType
 
-from xsource.book.search import find_matches
+from xsource.book.importer import import_csv
+from xsource.book.publish import DIRECTORY_TITLE, publish_directory
+from xsource.book.search import find_matches, format_supplier_row, search_suppliers
 from xsource.budget import Budget
+from xsource.cli.request import format_request_row
 from xsource.config import Config
 from xsource.invoices.capture import validate_iso_date
 from xsource.research.candidates import Candidate
@@ -32,10 +36,20 @@ from xsource.research.triage import Triage, run_triage
 from xsource.secrets import secret_from_env
 from xsource.sheet.client import SheetClient
 from xsource.signals import emit as signals_emit
-from xsource.store.remote import SyncedStore, get_offline_reason
-from xsource.wiring import build_budget, build_research_fns, build_stores
+from xsource.store.remote import StoreOffline, SyncedStore, get_offline_reason
+from xsource.wiring import (
+    build_budget,
+    build_directory_state_file,
+    build_research_fns,
+    build_stores,
+)
 
 _APP_LABEL = "xsource"
+
+_CLI_REQUEST_LIST = "xsource request list"
+_CLI_BOOK_SEARCH = "xsource book search"
+_CLI_BOOK_IMPORT = "xsource book import"
+_CLI_BOOK_PUBLISH = "xsource book publish"
 
 _SHELVES: dict[str, str] = {
     "A": "New request",
@@ -61,6 +75,26 @@ _INVOICE_CAPTURE_BLAST = BlastRadius(
     reversible="Invoice and price-history rows can be corrected by operator edit.",
 )
 
+_REQUEST_LIST_BLAST = BlastRadius(
+    summary="Writes nothing.",
+    reversible="No write is performed.",
+)
+
+_BOOK_SEARCH_BLAST = BlastRadius(
+    summary="Writes nothing.",
+    reversible="No write is performed.",
+)
+
+_BOOK_IMPORT_BLAST = BlastRadius(
+    summary="Writes supplier records only; re-import skips existing names.",
+    reversible="Remove imported supplier records by id.",
+)
+
+_BOOK_PUBLISH_BLAST = BlastRadius(
+    summary="Creates or updates one staff supplier directory Sheet and one directory state file.",
+    reversible="Delete the Sheet and remove directory-sheet.json.",
+)
+
 
 def _status() -> dict:
     cfg = Config.from_env()
@@ -81,6 +115,74 @@ def _status() -> dict:
 
 def _store_online(*stores) -> bool:
     return bool(stores) and all(store is not None and not store.offline for store in stores)
+
+
+def _quarantine_suffix(store) -> str:
+    quarantined = getattr(store, "quarantined", 0)
+    if not quarantined:
+        return ""
+    return f" · quarantined: {quarantined} corrupt line(s)"
+
+
+def _readonly_preconditions(ctx: WizardContext) -> list[Precondition]:
+    try:
+        suppliers, requests_, invoices = build_stores(Config.from_env())
+    except Exception:
+        return [Precondition("Store loaded", False, "store unavailable")]
+    stores = (suppliers, requests_, invoices)
+    offline = any(getattr(store, "offline", False) for store in stores)
+    return [
+        Precondition(
+            "Store loaded",
+            True,
+            "offline read-only cache" if offline else "GCS store available",
+        )
+    ]
+
+
+def _book_write_preconditions(ctx: WizardContext) -> list[Precondition]:
+    try:
+        suppliers, _requests, _invoices = build_stores(Config.from_env())
+    except Exception:
+        return [Precondition("Store reachable", False, "store unavailable")]
+    online = suppliers is not None and not getattr(suppliers, "offline", False)
+    return [
+        Precondition(
+            "Store reachable",
+            online,
+            "GCS store available" if online else "offline read-only cache",
+        )
+    ]
+
+
+def _publish_preconditions(ctx: WizardContext) -> list[Precondition]:
+    cfg = Config.from_env()
+    sheets_token = os.environ.get("XSOURCE_SHEETS_TOKEN_PATH", "")
+    try:
+        suppliers, _requests, _invoices = build_stores(cfg)
+        supplier_records = suppliers.all()
+        online = suppliers is not None and not getattr(suppliers, "offline", False)
+    except Exception:
+        suppliers = None
+        supplier_records = []
+        online = False
+    return [
+        Precondition(
+            "Sheets token",
+            bool(sheets_token and Path(sheets_token).exists()),
+            sheets_token or "missing",
+        ),
+        Precondition(
+            "Store reachable",
+            online,
+            "GCS store available" if online else "offline read-only cache",
+        ),
+        Precondition(
+            "Suppliers available",
+            bool(supplier_records),
+            f"{len(supplier_records)} supplier(s)" if supplier_records else "none",
+        ),
+    ]
 
 
 def _preconditions(ctx: WizardContext) -> list[Precondition]:
@@ -728,6 +830,185 @@ _invoice_capture_handler = make_walk_handler(
 )
 
 
+def _request_list_step(ctx: WizardContext, bag: dict) -> StepResult:
+    _suppliers, requests_, _invoices = build_stores(Config.from_env())
+    records = sorted(requests_.all(), key=lambda r: r.id)
+    open_n = sum(1 for request in records if request.status == "open")
+    total_n = len(records)
+    rows = [format_request_row(request) for request in records]
+    return StepResult(
+        ok=True,
+        data={
+            "summary": f"{open_n} open · {total_n} total{_quarantine_suffix(requests_)}",
+            "rows": rows,
+        },
+    )
+
+
+def _book_search_term_step(ctx: WizardContext, bag: dict) -> StepResult:
+    term = ctx.input_fn("Search term: ").strip() if ctx.input_fn else ""
+    if not term:
+        return StepResult(ok=False, message="No search term entered.")
+    return StepResult(ok=True, data={"term": term})
+
+
+def _book_search_results_step(ctx: WizardContext, bag: dict) -> StepResult:
+    suppliers, _requests, _invoices = build_stores(Config.from_env())
+    term = bag["term"]
+    matches = search_suppliers(suppliers.all(), term)
+    rows = [format_supplier_row(supplier) for supplier in matches]
+    return StepResult(
+        ok=True,
+        data={
+            "summary": f"{len(matches)} match(es) for '{term}'{_quarantine_suffix(suppliers)}",
+            "rows": rows,
+        },
+    )
+
+
+_request_list_handler = make_walk_handler(
+    title="List procurement requests",
+    steps=[Step(label="List", run=_request_list_step)],
+    blast_radius=_REQUEST_LIST_BLAST,
+    preconditions_fn=_readonly_preconditions,
+    equivalent_cli=_CLI_REQUEST_LIST,
+    total=2,
+)
+
+
+_book_search_handler = make_walk_handler(
+    title="Search black book",
+    steps=[
+        Step(label="Term", run=_book_search_term_step),
+        Step(label="Results", run=_book_search_results_step),
+    ],
+    blast_radius=_BOOK_SEARCH_BLAST,
+    preconditions_fn=_readonly_preconditions,
+    equivalent_cli=_CLI_BOOK_SEARCH,
+    total=3,
+)
+
+
+def _book_import_file_step(ctx: WizardContext, bag: dict) -> StepResult:
+    raw_path = ctx.input_fn("CSV path: ").strip() if ctx.input_fn else ""
+    path = Path(raw_path)
+    if not path.exists():
+        return StepResult(ok=False, message=f"No such file: {path}")
+    return StepResult(ok=True, data={"csv_path": str(path)})
+
+
+def _book_import_preview_step(ctx: WizardContext, bag: dict) -> StepResult:
+    suppliers, _requests, _invoices = build_stores(Config.from_env())
+    report = import_csv(
+        Path(bag["csv_path"]),
+        suppliers,
+        today=dt.date.today().isoformat(),
+        dry_run=True,
+    )
+    return StepResult(
+        ok=True,
+        data={
+            "summary": f"Imported {report['imported']}, skipped {report['skipped']}.",
+            "report": report,
+        },
+    )
+
+
+def _book_import_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
+    if not confirm_apply(
+        ctx,
+        prompt="Import suppliers from CSV?",
+        equivalent_cli=_CLI_BOOK_IMPORT,
+    ):
+        return StepResult(ok=False, message="Apply declined.")
+    suppliers, _requests, _invoices = build_stores(Config.from_env())
+    try:
+        report = import_csv(
+            Path(bag["csv_path"]),
+            suppliers,
+            today=dt.date.today().isoformat(),
+            dry_run=False,
+        )
+    except StoreOffline as exc:
+        return StepResult(ok=False, message=f"store offline: {exc}")
+    return StepResult(
+        ok=True,
+        data={
+            "summary": f"Imported {report['imported']}, skipped {report['skipped']}.",
+            "report": report,
+        },
+    )
+
+
+def _book_publish_preview_step(ctx: WizardContext, bag: dict) -> StepResult:
+    suppliers, _requests, _invoices = build_stores(Config.from_env())
+    supplier_records = suppliers.all()
+    if not supplier_records:
+        return StepResult(ok=False, message="No suppliers in the black book.")
+    return StepResult(
+        ok=True,
+        data={"summary": f"{len(supplier_records)} supplier(s) ready to publish."},
+    )
+
+
+def _book_publish_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
+    if not confirm_apply(
+        ctx,
+        prompt="Publish staff directory?",
+        equivalent_cli=_CLI_BOOK_PUBLISH,
+    ):
+        return StepResult(ok=False, message="Apply declined.")
+    cfg = Config.from_env()
+    suppliers, _requests, _invoices = build_stores(cfg)
+    try:
+        creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_SHEETS_TOKEN_PATH"])
+        report = publish_directory(
+            suppliers.all(),
+            state_file=build_directory_state_file(cfg),
+            client=SheetClient(creds),
+            title=DIRECTORY_TITLE,
+            folder_id=cfg.drive_folder_id,
+            share_with=cfg.staff_share_group,
+        )
+    except Exception as exc:
+        return StepResult(ok=False, message=f"Publish failed: {exc}")
+    return StepResult(
+        ok=True,
+        data={
+            "summary": f"Published directory ({report['rows']} supplier(s)).",
+            "result_links": [("Directory", report["sheet_url"])],
+            "report": report,
+        },
+    )
+
+
+_book_import_handler = make_walk_handler(
+    title="Import black book",
+    steps=[
+        Step(label="File", run=_book_import_file_step),
+        Step(label="Preview", run=_book_import_preview_step),
+        Step(label="Apply", run=_book_import_apply_step),
+    ],
+    blast_radius=_BOOK_IMPORT_BLAST,
+    preconditions_fn=_book_write_preconditions,
+    equivalent_cli=_CLI_BOOK_IMPORT,
+    total=4,
+)
+
+
+_book_publish_handler = make_walk_handler(
+    title="Publish staff directory",
+    steps=[
+        Step(label="Preview", run=_book_publish_preview_step),
+        Step(label="Publish", run=_book_publish_apply_step),
+    ],
+    blast_radius=_BOOK_PUBLISH_BLAST,
+    preconditions_fn=_publish_preconditions,
+    equivalent_cli=_CLI_BOOK_PUBLISH,
+    total=3,
+)
+
+
 def _reorder_proposal_step(ctx: WizardContext, bag: dict) -> StepResult:
     """Show the reorder proposal for a recurring supplier and capture the decision."""
     from xsource.p4.reorder import build_reorder_proposal
@@ -944,35 +1225,55 @@ def register_all() -> None:
             blast_radius=_INVOICE_CAPTURE_BLAST,
         )
     )
+    register_capability(
+        CapabilitySpec(
+            key="request.list",
+            shelf="B",
+            title="List requests",
+            summary="List procurement requests from the store. Read-only.",
+            equivalent_cli=_CLI_REQUEST_LIST,
+            run=_request_list_handler,
+            blast_radius=_REQUEST_LIST_BLAST,
+            money_movement=False,
+        )
+    )
+    register_capability(
+        CapabilitySpec(
+            key="book.search",
+            shelf="C",
+            title="Search black book",
+            summary="Search saved suppliers by name, category, or tag. Read-only.",
+            equivalent_cli=_CLI_BOOK_SEARCH,
+            run=_book_search_handler,
+            blast_radius=_BOOK_SEARCH_BLAST,
+            money_movement=False,
+        )
+    )
+    register_capability(
+        CapabilitySpec(
+            key="book.import",
+            shelf="C",
+            title="Import black book",
+            summary="Seed the supplier store from CSV behind the apply gate.",
+            equivalent_cli=_CLI_BOOK_IMPORT,
+            run=_book_import_handler,
+            blast_radius=_BOOK_IMPORT_BLAST,
+            money_movement=False,
+        )
+    )
+    register_capability(
+        CapabilitySpec(
+            key="book.publish",
+            shelf="D",
+            title="Publish staff directory",
+            summary="Regenerate the read-only staff supplier directory behind the apply gate.",
+            equivalent_cli=_CLI_BOOK_PUBLISH,
+            run=_book_publish_handler,
+            blast_radius=_BOOK_PUBLISH_BLAST,
+            money_movement=False,
+        )
+    )
     for key, shelf, title, summary, cli in (
-        (
-            "request.list",
-            "B",
-            "List requests",
-            "Show open and recent procurement requests. Planned — not yet wired.",
-            None,
-        ),
-        (
-            "book.search",
-            "C",
-            "Search black book",
-            "Search saved suppliers by name, category, or tag. Planned — not yet wired.",
-            None,
-        ),
-        (
-            "book.import",
-            "C",
-            "Import black book",
-            "Seed the supplier store from CSV. Planned — not yet wired.",
-            None,
-        ),
-        (
-            "book.publish",
-            "D",
-            "Publish staff directory",
-            "Regenerate the read-only staff supplier directory. Planned — not yet wired.",
-            None,
-        ),
         (
             "request.sync",
             "B",

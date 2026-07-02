@@ -8,6 +8,11 @@ Westcountry Tree Care,trees-grounds,tree-surgery;chipping,01626 332000,info@wtc.
 Smith Heating,heating,boiler,07700 900123,,
 """
 
+DUPLICATE_CSV = """name,category,tags,phone,email,notes
+Gamma Roofing,roofing,slate,01632 960100,,
+gamma roofing,roofing,flat-roof,01632 960101,,
+"""
+
 
 def test_import_creates_suppliers(tmp_path):
     f = tmp_path / "book.csv"
@@ -29,6 +34,26 @@ def test_reimport_skips_existing_by_name(tmp_path):
     import_csv(f, store, today="2026-06-10")
     report = import_csv(f, store, today="2026-06-10")
     assert report == {"imported": 0, "skipped": 2}
+
+
+def test_import_dry_run_matches_wet_report(tmp_path):
+    f = tmp_path / "book.csv"
+    f.write_text(CSV)
+    store = JsonlStore(tmp_path / "suppliers.jsonl", Supplier)
+    dry = import_csv(f, store, today="2026-06-10", dry_run=True)
+    assert dry == {"imported": 2, "skipped": 0}
+    assert store.all() == []
+    wet = import_csv(f, store, today="2026-06-10")
+    assert wet == dry
+
+
+def test_import_intra_csv_duplicate_skipped(tmp_path):
+    f = tmp_path / "book.csv"
+    f.write_text(DUPLICATE_CSV)
+    store = JsonlStore(tmp_path / "suppliers.jsonl", Supplier)
+    report = import_csv(f, store, today="2026-06-10")
+    assert report == {"imported": 1, "skipped": 1}
+    assert [s.name for s in store.all()] == ["Gamma Roofing"]
 
 
 def test_phone_normalisation():

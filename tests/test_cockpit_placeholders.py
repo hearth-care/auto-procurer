@@ -25,10 +25,6 @@ _BUILD_ONLY_MARKER = "Build-only"
 _LIVE_MARKER = "Live"
 
 _PLACEHOLDER_STATUS_MARKERS = {
-    "request.list": _PLANNED_MARKER,
-    "book.search": _PLANNED_MARKER,
-    "book.import": _PLANNED_MARKER,
-    "book.publish": _PLANNED_MARKER,
     "request.sync": _CLI_MARKER,
     "watcher.status": _CLI_MARKER,
     "partner.checkatrade": _BUILD_ONLY_MARKER,
@@ -90,3 +86,14 @@ def test_watcher_status_card_summary_via_drive():
     assert cli.startswith("xsource"), (
         f"watcher.status equivalent_cli does not start with 'xsource'; got: {cli!r}"
     )
+
+
+def test_shelf_item_order_is_stable():
+    by_shelf: dict[str, list[str]] = {}
+    for cap in registry.get_capabilities():
+        by_shelf.setdefault(cap.shelf, []).append(cap.key)
+    assert by_shelf["A"] == ["request.new", "request.trigger", "request.reorder"]
+    assert by_shelf["B"] == ["invoice.capture", "request.list", "request.sync"]
+    assert by_shelf["C"] == ["book.search", "book.import"]
+    assert by_shelf["D"] == ["book.publish", "partner.checkatrade"]
+    assert by_shelf["E"] == ["request.outreach", "request.followup", "watcher.status"]

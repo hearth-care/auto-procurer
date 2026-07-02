@@ -1,6 +1,6 @@
 # xsource cockpit journey map
 
-**Last verified:** 2026-06-12 against `origin/main` (`354fd63`).
+**Last verified:** 2026-07-02 against PR #29 (`claude/plan-operator-surfaces`).
 
 For each journey this document states:
 - **Entry point** — shelf key and capability key(s)
@@ -88,17 +88,20 @@ for the re-tender branch.
 
 **Entry point:** shelf `B` → `request.list`, `request.sync`
 
-### 2a · `request.list` — placeholder
+### 2a · `request.list` — implemented (read-only)
 
-**Current state:** `run=None` — renders a static card only.
-No live data view exists in the cockpit.
+**Current state:** fully implemented read-only walk.
+Code path: `_request_list_handler` → `_request_list_step`.
+CLI twin: `xsource request list`.
 
-**Preconditions:** none (card is always reachable).
+**Preconditions:** store loaded. Offline read-only cache still passes; construction failure blocks.
 
 **Mutation risk:** read-only — no mutations.
 
-**Target live path:** card wired to a read-only list of open and recent requests from the
-GCS store; agent-model twin required per `CLAUDE.md` parity rule.
+**Walk steps:** List. The result reports open and total request counts, and surfaces any
+current-load JSONL quarantine count.
+
+**Target live path:** current implementation is the target state.
 
 ---
 
@@ -128,33 +131,40 @@ preview mode.
 
 **Entry point:** shelf `C` → `book.search`, `book.import`
 
-### 3a · `book.search` — placeholder
+### 3a · `book.search` — implemented (read-only)
 
-**Current state:** `run=None` — renders a static card only.
-A real search implementation exists at `src/xsource/book/search.py` (`find_matches`).
-The function is already called internally by `request.new` research.
+**Current state:** fully implemented read-only walk.
+Code path: `_book_search_handler` → `_book_search_term_step` → `_book_search_results_step`
+→ `src/xsource/book/search.py`.
+CLI twin: `xsource book search TERM`.
 
-**Preconditions:** GCS store reachable (for live data); read-only without store.
+**Preconditions:** store loaded. Offline read-only cache still passes; construction failure blocks.
 
 **Mutation risk:** read-only — no mutations.
 
-**Target live path:** card wired to `find_matches` with a text/category/tag query input;
-read path only, no writes.
+**Walk steps:** Term → Results. Results match supplier name, category, or tag and include
+the current-load supplier-store quarantine count when present.
+
+**Target live path:** current implementation is the target state.
 
 ---
 
-### 3b · `book.import` — placeholder
+### 3b · `book.import` — implemented (confirm-apply gated)
 
-**Current state:** `run=None` — renders a static card only.
-A real importer exists at `src/xsource/book/importer.py`.
+**Current state:** fully implemented walk.
+Code path: `_book_import_handler` → `_book_import_file_step` → `_book_import_preview_step`
+→ `_book_import_apply_step` → `src/xsource/book/importer.py`.
+CLI twin: `xsource book import CSV [--dry-run]`.
 
-**Preconditions:** GCS store reachable; CSV file path provided.
+**Preconditions:** supplier store reachable for writes; CSV file path provided.
 
 **Mutation risk:** writes new supplier records to the GCS store.
-Gate: confirm-apply required before writing.
+Gate: `confirm_apply` required before writing.
 
-**Target live path:** card wired to the importer with a file-path input step; read path
-(preview count) before apply.
+**Walk steps:** File → Preview → Apply. Preview uses the same importer with `dry_run=True`;
+Apply writes only after the cockpit gate. Re-runs skip existing supplier names.
+
+**Target live path:** current implementation is the target state.
 
 ---
 
@@ -162,17 +172,24 @@ Gate: confirm-apply required before writing.
 
 **Entry point:** shelf `D` → `book.publish`, `partner.checkatrade`
 
-### 4a · `book.publish` — placeholder
+### 4a · `book.publish` — implemented (confirm-apply gated)
 
-**Current state:** `run=None` — renders a static card only.
-A real publish module exists at `src/xsource/book/publish.py`.
+**Current state:** fully implemented walk.
+Code path: `_book_publish_handler` → `_book_publish_preview_step` → `_book_publish_apply_step`
+→ `src/xsource/book/publish.py` and `src/xsource/sheet/client.py`.
+CLI twin: `xsource book publish`.
 
-**Preconditions:** GCS store reachable; Drive token present.
+**Preconditions:** Sheets token file exists, supplier store reachable, and at least one
+supplier exists.
 
 **Mutation risk:** regenerates the read-only staff supplier directory (write to Drive/Sheets).
-Gate: confirm-apply required.
+Gate: `confirm_apply` required.
 
-**Target live path:** card wired to the publish module; read-only preview (record count) before apply.
+**Walk steps:** Preview → Publish. Publish updates the existing persisted directory sheet
+when present, recreates it if the saved sheet is gone, and shares it read-only with the
+staff group when configured.
+
+**Target live path:** current implementation is the target state.
 
 ---
 
@@ -285,11 +302,7 @@ The table below maps each unbuilt target path to a rough size and suggested orde
 
 | # | Capability | Target | Size | Notes |
 |---|---|---|---|---|
-| 1 | `request.list` | Read-only list view from GCS store | S | Needs model twin (render + model parity); read path only, no mutations |
-| 2 | `watcher.status` | Cockpit card wired to live watcher state | S | Reuse `xsource watcher status` data; card + model twin; no new logic |
-| 3 | `request.sync` | Sync walk in cockpit + `--dry-run` on `sync-all` | M | Two sub-tasks: cockpit walk (read path preview + confirm-apply) and CLI `--dry-run` flag |
-| 4 | `book.search` | Search walk wired to `find_matches` | S | `find_matches` already exists; walk = one input step + results table + model twin |
-| 5 | `book.import` | Import walk with CSV preview then apply | M | File-path input → read preview count → confirm-apply → write; needs model twin |
-| 6 | `book.publish` | Publish walk wired to `book/publish.py` | M | Preview record count → confirm-apply → write; confirm-apply gate required |
-| 7 | `doctor` | Add store counts + watcher + signal count to probes | XS | Extend `doctor_build_probes`; no new screens or walks required |
-| 8 | `partner.checkatrade` | Checkatrade walk under guarded-apply gate | L | Requires operator DPA sign-off; gate token handshake; post path scoped carefully |
+| 1 | `watcher.status` | Cockpit card wired to live watcher state | S | Reuse `xsource watcher status` data; card + model twin; no new logic |
+| 2 | `request.sync` | Sync walk in cockpit + `--dry-run` on `sync-all` | M | Two sub-tasks: cockpit walk (read path preview + confirm-apply) and CLI `--dry-run` flag |
+| 3 | `doctor` | Add store counts + watcher + signal count to probes | XS | Extend `doctor_build_probes`; no new screens or walks required |
+| 4 | `partner.checkatrade` | Checkatrade walk under guarded-apply gate | L | Requires operator DPA sign-off; gate token handshake; post path scoped carefully |

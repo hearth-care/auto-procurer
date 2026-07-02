@@ -33,6 +33,10 @@ xsource request sync-all      # sync all open request records
 xsource request trigger       # parse an email/chat trigger and show extraction
 xsource request followup      # draft a follow-up reply for a supplier response
 xsource request reorder       # open a prefilled reorder review for a recurring supplier
+xsource request list          # list procurement requests, read-only
+xsource book search TERM      # search saved suppliers, read-only
+xsource book import CSV [--dry-run]  # import suppliers from CSV, preview with --dry-run
+xsource book publish          # publish the staff supplier directory
 ```
 
 `xsource` bare on a TTY opens the cockpit. `xsource --agent-stdio` serves it

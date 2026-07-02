@@ -28,3 +28,8 @@ def test_no_matches_is_empty_not_error():
 def test_search_by_name_substring_case_insensitive():
     assert [s.id for s in search_suppliers(SUPPLIERS, "smith")] == ["s-2"]
     assert [s.id for s in search_suppliers(SUPPLIERS, "tree")] == ["s-1"]
+
+
+def test_search_by_category_and_tag():
+    assert [s.id for s in search_suppliers(SUPPLIERS, "heating")] == ["s-2"]
+    assert [s.id for s in search_suppliers(SUPPLIERS, "boiler")] == ["s-2"]

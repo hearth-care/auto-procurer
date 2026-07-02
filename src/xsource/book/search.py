@@ -22,3 +22,10 @@ def search_suppliers(suppliers: list[Supplier], term: str) -> list[Supplier]:
         or any(needle in category for category in supplier.categories)
         or any(needle in tag for tag in supplier.tags)
     ]
+
+
+def format_supplier_row(supplier: Supplier) -> str:
+    return (
+        f"{supplier.id}\t{supplier.name}\t{','.join(supplier.categories)}\t"
+        f"{','.join(supplier.tags)}\t{supplier.phone or ''}"
+    )
