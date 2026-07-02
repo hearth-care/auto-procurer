@@ -1,8 +1,8 @@
-"""AC-C6-3 — the ``@scan_horizon`` contract and the four horizon builders.
+"""AC-C6-3 — the ``@scan_horizon`` contract and the seven horizon builders.
 
 ``scan_xsource_horizon`` is a real, ``@scan_horizon``-tagged function composed
-from four builders: chase-quote, recurring-service, watcher-health, and
-store-offline. ``build_xsource_signals`` is the composed
+from seven builders: chase-quote, recurring-service, watcher-health, store-offline,
+payment-required, invoice-variance, and rejected-invoice. ``build_xsource_signals`` is the composed
 ``(*, today, now) -> Sequence[Signal]`` callable that ``emit_signals`` consumes.
 """
 

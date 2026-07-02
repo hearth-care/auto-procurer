@@ -38,7 +38,7 @@ def _open_once() -> str:
 def test_cockpit_opens_three_region_shell() -> None:
     frame = _open_once()
     # The three-region grammar: pulse / needs you / toolkit, each with its label
-    # plus the worker's own content (a stub pill, a stub needs item, a worker
+    # plus the worker's own content (a pulse pill, a needs item, a worker
     # shelf). Asserting the region labels proves all three regions painted.
     assert "pulse" in frame  # region 1
     assert "needs you" in frame  # region 2
