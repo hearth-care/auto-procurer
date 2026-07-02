@@ -383,7 +383,7 @@ in Task 4. Test fakes mirror the tuple/report shapes of the existing house fake
 **Production call site (HR9):** `request_app` in `src/xsource/cli/request.py` (already mounted
 on the root app in `src/xsource/cli/__init__.py:29`).
 
-- [ ] **Step 1 — failing tests** (new file `tests/cli/test_request_list.py`; `_REQUESTS` = Fixture C):
+- [x] **Step 1 — failing tests** (new file `tests/cli/test_request_list.py`; `_REQUESTS` = Fixture C):
 
 ```python
 from typer.testing import CliRunner
@@ -446,18 +446,18 @@ def test_request_list_warns_on_quarantine(monkeypatch, tmp_path):
   Plus in `tests/store/test_jsonl.py`: `test_quarantined_counts_current_load` — a file with one
   valid + one corrupt line loads with `store.quarantined == 1`; constructing a second store over
   the same (unchanged) file also reports `1`, not `2`.
-- [ ] **Step 2 — run, confirm RED:** `uv run pytest tests/cli/test_request_list.py tests/store/test_jsonl.py -q`
+- [x] **Step 2 — run, confirm RED:** `uv run pytest tests/cli/test_request_list.py tests/store/test_jsonl.py -q`
   → expect `Error: No such command 'list'` (exit 2) assertions failing and
   `AttributeError: 'JsonlStore' object has no attribute 'quarantined'`.
-- [ ] **Step 3 — implement:** `JsonlStore.__init__` sets `self.quarantined = 0` **before**
+- [x] **Step 3 — implement:** `JsonlStore.__init__` sets `self.quarantined = 0` **before**
   `_load()`; the `except` branch increments it. `SyncedStore` gains
   `@property def quarantined(self) -> int: return self._store.quarantined`. In
   `cli/request.py` add `format_request_row(request) -> str` (whitespace-collapsed need, tab
   format per the contract) and the `@request_app.command("list")` `list_()` command: build
   stores, stderr-warn when `requests_.quarantined`, echo `format_request_row(r)` for
   `sorted(requests_.all(), key=lambda r: r.id)`.
-- [ ] **Step 4 — focused verify:** same command → all new tests pass; existing store tests still green.
-- [ ] **Step 5 — commit:** `request: add read-only 'xsource request list' + store quarantine counters`
+- [x] **Step 4 — focused verify:** same command → all new tests pass; existing store tests still green.
+- [x] **Step 5 — commit:** `request: add read-only 'xsource request list' + store quarantine counters`
 
 ### Task 2: `book` CLI group — search + import (publish command arrives in Task 4)
 
@@ -865,8 +865,8 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
 
 ## HANDOFF NOTES
 
-- Current phase: not started.
-- Next concrete step: Task 1 Step 1 (failing tests for `request list` + quarantine counter).
-- Decisions taken: none beyond the Binding decisions above.
-- Known failing tests: none yet.
+- Current phase: Task 1 complete; starting Task 2 (`book` CLI group — search + import).
+- Next concrete step: Task 2 Step 1 (failing tests for `xsource book search`, `xsource book import`, and `import_csv(dry_run=...)`).
+- Decisions taken: Task 1 followed the plan as written; quarantine counts are per-store-load and `request list` warns on stderr before sorted read-only rows.
+- Known failing tests: none after `uv run pytest tests/cli/test_request_list.py tests/store/test_jsonl.py -q` (`7 passed in 0.07s`).
 - Dependencies/operator TODOs: none.

@@ -17,6 +17,7 @@ class JsonlStore:
         self.path = Path(path)
         self.model = model
         self._records: dict[str, Any] = {}
+        self.quarantined = 0
         self._load()
 
     def _load(self) -> None:
@@ -31,6 +32,7 @@ class JsonlStore:
                 log.warning("quarantining corrupt line in %s: %s", self.path.name, exc)
                 with open(f"{self.path}.quarantine", "a") as q:
                     q.write(line + "\n")
+                self.quarantined += 1
                 continue
             self._records[rec.id] = rec
 

@@ -19,6 +19,11 @@ from xsource.wiring import build_stores
 request_app = typer.Typer(help="Manage xsource procurement requests.")
 
 
+def format_request_row(request) -> str:
+    need = " ".join(request.raw_need.split())
+    return f"{request.id}\t{request.status}\t{request.created_at}\t{need}"
+
+
 def _sheet_client() -> SheetClient:
     from google.oauth2.credentials import Credentials
 
@@ -52,6 +57,20 @@ def sync_all_requests(*, suppliers, requests, sheets, synced_at: dt.datetime) ->
         report["updated_suppliers"] += one["updated_suppliers"]
         report["warnings"].extend(one["warnings"])
     return report
+
+
+@request_app.command("list")
+def list_() -> None:
+    cfg = Config.from_env()
+    _suppliers, requests_, _invoices = build_stores(cfg)
+    quarantined = getattr(requests_, "quarantined", 0)
+    if quarantined:
+        typer.echo(
+            f"warning: {quarantined} corrupt line(s) quarantined in {requests_.path.name}",
+            err=True,
+        )
+    for request in sorted(requests_.all(), key=lambda r: r.id):
+        typer.echo(format_request_row(request))
 
 
 @request_app.command("sync")

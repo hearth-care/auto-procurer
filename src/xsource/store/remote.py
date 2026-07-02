@@ -31,6 +31,10 @@ class SyncedStore:
     def next_id(self, prefix: str) -> str:
         return self._store.next_id(prefix)
 
+    @property
+    def quarantined(self) -> int:
+        return self._store.quarantined
+
     def upsert(self, rec) -> None:
         if self.offline:
             raise StoreOffline("store is offline (read-only local cache)")

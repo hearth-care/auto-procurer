@@ -29,3 +29,12 @@ def test_corrupt_line_is_quarantined_not_fatal(tmp_path, capsys):
     assert [x.id for x in st.all()] == ["s-1"]
     quarantine = tmp_path / "suppliers.jsonl.quarantine"
     assert quarantine.exists() and "{BROKEN" in quarantine.read_text()
+
+
+def test_quarantined_counts_current_load(tmp_path):
+    p = tmp_path / "suppliers.jsonl"
+    p.write_text(json.dumps({"id": "s-1", "name": "ok"}) + "\n{BROKEN\n")
+    first = make_store(tmp_path)
+    second = make_store(tmp_path)
+    assert first.quarantined == 1
+    assert second.quarantined == 1
