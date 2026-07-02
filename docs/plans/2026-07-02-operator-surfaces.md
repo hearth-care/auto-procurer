@@ -643,7 +643,7 @@ def test_shelf_item_order_is_stable():
 since Task 2). The walk call site lands in Task 5 — both consume the same
 `publish_directory()`.
 
-- [ ] **Step 1 — failing tests** (`tests/book/test_publish_flow.py` uses a recording fake
+- [x] **Step 1 — failing tests** (`tests/book/test_publish_flow.py` uses a recording fake
   client — same style as `fake_sheet` in `tests/walks/test_request_new.py`):
 
 ```python
@@ -721,17 +721,17 @@ def test_publish_malformed_state_treated_as_absent(tmp_path):
   `test_no_share_call_when_group_unset` (share_with=None → no `permissions().create`).
   CLI (extend `tests/cli/test_book_commands.py`): `test_book_publish_cli_empty_book`
   (exit 1, stderr `no suppliers to publish`, fake client never called).
-- [ ] **Step 2 — run, confirm RED:** `uv run pytest tests/book/test_publish_flow.py tests/sheet/test_client_directory.py -q`
+- [x] **Step 2 — run, confirm RED:** `uv run pytest tests/book/test_publish_flow.py tests/sheet/test_client_directory.py -q`
   → `ImportError: cannot import name 'publish_directory'`.
-- [ ] **Step 3 — implement:** per the Functional contract — `DIRECTORY_TITLE`,
+- [x] **Step 3 — implement:** per the Functional contract — `DIRECTORY_TITLE`,
   `DirectorySheetGone`, `load_directory_state`/`save_directory_state` (malformed state → `{}`),
   `publish_directory` (create-path state save wrapped in try/except → warning log, report still
   returned); `SheetClient.create_directory_sheet` / `update_directory_sheet` (404 detection:
   `getattr(exc, "status_code", None) == 404 or getattr(getattr(exc, "resp", None), "status", None) == 404`);
   `wiring.build_directory_state_file`; `book publish` CLI command using all of the above with
   `folder_id=cfg.drive_folder_id`, `share_with=cfg.staff_share_group`.
-- [ ] **Step 4 — focused verify:** same command + `uv run mypy src` → green.
-- [ ] **Step 5 — commit:** `book: staff-directory publish flow (persisted sheet id, read-only share) + CLI`
+- [x] **Step 4 — focused verify:** same command + `uv run mypy src` → green.
+- [x] **Step 5 — commit:** `book: staff-directory publish flow (persisted sheet id, read-only share) + CLI`
 
 ### Task 5: wire the gated walks — `book.import` + `book.publish`
 
@@ -865,8 +865,8 @@ def test_book_publish_preview_blocks_empty_book(monkeypatch, tmp_path):
 
 ## HANDOFF NOTES
 
-- Current phase: Task 3 complete; starting Task 4 (staff-directory publish flow + `xsource book publish`).
-- Next concrete step: Task 4 Step 1 (failing publish flow, sheet client, and CLI empty-book tests).
-- Decisions taken: Task 1 followed the plan as written; Task 2 added only `book search` and `book import` CLI; Task 3 wired `request.list` and `book.search` at their existing shelf positions and kept import/publish placeholders for Task 5.
-- Known failing tests: none after `uv run pytest tests/walks/test_readonly_walks.py tests/test_cockpit_placeholders.py tests/cli/test_equivalent_cli_parity.py -q` (`21 passed in 0.19s`) and `uv run pytest tests/test_cockpit_contract.py -q` (`2 passed in 0.04s`).
+- Current phase: Task 4 complete; starting Task 5 (wire gated `book.import` and `book.publish` walks).
+- Next concrete step: Task 5 Step 1 (failing gated walk tests plus final four-key equivalent-CLI validator).
+- Decisions taken: Task 1 followed the plan as written; Task 2 added only `book search` and `book import` CLI; Task 3 wired `request.list` and `book.search` at their existing shelf positions; Task 4 added the publish flow/CLI while leaving the cockpit publish walk placeholder for Task 5.
+- Known failing tests: none after `uv run pytest tests/book/test_publish_flow.py tests/sheet/test_client_directory.py tests/cli/test_book_commands.py -q` (`17 passed in 0.08s`) and `uv run mypy src` (`Success: no issues found in 62 source files`).
 - Dependencies/operator TODOs: none.

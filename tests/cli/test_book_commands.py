@@ -85,3 +85,13 @@ def test_book_import_dry_run_writes_nothing(monkeypatch, tmp_path):
 def test_book_import_missing_file_exits_2(tmp_path):
     result = runner.invoke(app, ["book", "import", str(tmp_path / "absent.csv")])
     assert result.exit_code == 2
+
+
+def test_book_publish_cli_empty_book(monkeypatch, tmp_path):
+    from xsource.cli import book as book_mod
+
+    store = JsonlStore(tmp_path / "suppliers.jsonl", Supplier)
+    monkeypatch.setattr(book_mod, "build_stores", lambda cfg: (store, object(), object()))
+    result = runner.invoke(app, ["book", "publish"])
+    assert result.exit_code == 1
+    assert "no suppliers to publish" in result.stderr

@@ -11,6 +11,7 @@ from xsource.config import Config
 from xsource.research import places, pricesweep, websearch
 from xsource.research.companies_house import company_check
 from xsource.secrets import secret_from_env
+from xsource.store.files import SyncedFile
 from xsource.store.models import InvoiceRecord, Request, Supplier
 from xsource.store.remote import SyncedStore, make_blob
 
@@ -42,6 +43,13 @@ def build_stores(cfg: Config) -> tuple[SyncedStore, SyncedStore, SyncedStore]:
         state_blob(cfg, "invoices.jsonl"),
     )
     return suppliers, requests_, invoices
+
+
+def build_directory_state_file(cfg: Config) -> SyncedFile:
+    return SyncedFile(
+        Path(cfg.state_dir) / "directory-sheet.json",
+        blob=state_blob(cfg, "directory-sheet.json"),
+    )
 
 
 def build_budget(cfg: Config, today: dt.date) -> Budget:

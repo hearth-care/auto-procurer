@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 from pathlib import Path
 
 import typer
 
 from xsource.book.importer import import_csv
+from xsource.book.publish import DIRECTORY_TITLE, publish_directory
 from xsource.book.search import format_supplier_row, search_suppliers
 from xsource.config import Config
+from xsource.sheet.client import SheetClient
 from xsource.store.remote import StoreOffline
-from xsource.wiring import build_stores
+from xsource.wiring import build_directory_state_file, build_stores
 
 book_app = typer.Typer(help="Search, seed, and publish the supplier black book.")
 
@@ -49,4 +52,27 @@ def import_(
     except StoreOffline as exc:
         typer.echo(f"store offline: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+    typer.echo(report)
+
+
+@book_app.command("publish")
+def publish() -> None:
+    cfg = Config.from_env()
+    suppliers, _requests, _invoices = build_stores(cfg)
+    supplier_records = suppliers.all()
+    if not supplier_records:
+        typer.echo("no suppliers to publish", err=True)
+        raise typer.Exit(code=1)
+
+    from google.oauth2.credentials import Credentials
+
+    creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_SHEETS_TOKEN_PATH"])
+    report = publish_directory(
+        supplier_records,
+        state_file=build_directory_state_file(cfg),
+        client=SheetClient(creds),
+        title=DIRECTORY_TITLE,
+        folder_id=cfg.drive_folder_id,
+        share_with=cfg.staff_share_group,
+    )
     typer.echo(report)

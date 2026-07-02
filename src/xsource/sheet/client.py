@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from xsource.book.publish import DirectorySheetGone
 from xsource.sheet.template import COLUMNS, STATUS_VALUES
 
 
@@ -66,6 +67,53 @@ class SheetClient:
                 sendNotificationEmail=False,
             ).execute()
         return sid, url
+
+    def create_directory_sheet(
+        self,
+        title: str,
+        values: list[list[str]],
+        folder_id: str | None,
+        share_with: str | None,
+    ) -> tuple[str, str]:
+        body = {"properties": {"title": title}}
+        ss = self.sheets.spreadsheets().create(body=body).execute()
+        sid, url = ss["spreadsheetId"], ss["spreadsheetUrl"]
+        self.sheets.spreadsheets().values().update(
+            spreadsheetId=sid,
+            range="A1",
+            valueInputOption="RAW",
+            body={"values": values},
+        ).execute()
+        if folder_id:
+            self.drive.files().update(fileId=sid, addParents=folder_id, fields="id").execute()
+        if share_with:
+            self.drive.permissions().create(
+                fileId=sid,
+                body={"type": "group", "role": "reader", "emailAddress": share_with},
+                sendNotificationEmail=False,
+            ).execute()
+        return sid, url
+
+    def update_directory_sheet(self, sheet_id: str, values: list[list[str]]) -> None:
+        try:
+            self.sheets.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range="A1",
+                valueInputOption="RAW",
+                body={"values": values},
+            ).execute()
+        except Exception as exc:
+            status = getattr(exc, "status_code", None)
+            resp_status = getattr(getattr(exc, "resp", None), "status", None)
+            if status == 404 or resp_status == 404:
+                raise DirectorySheetGone(sheet_id) from exc
+            raise
+        # H is the final staff-directory column defined by xsource.book.publish._HEAD.
+        self.sheets.spreadsheets().values().clear(
+            spreadsheetId=sheet_id,
+            range=f"A{len(values) + 1}:H",
+            body={},
+        ).execute()
 
     def mark_asked(self, sheet_id: str, *, rank: int, asked_at, updated_at) -> None:
         row = rank + 1
