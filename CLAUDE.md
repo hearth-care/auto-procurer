@@ -2,8 +2,21 @@
 
 Worker-specific rules for xsource. The global `~/.claude/CLAUDE.md` and the `clonway-cockpit`
 framework rules (incl. agent-navigability) apply in every session and are not restated here.
-xsource is a stub worker: it has no domain rules yet. Add them (integrations, safety
-invariants, region/PII posture) as the worker grows.
+xsource is a live worker: procurement research → shortlist Sheet → draft-only
+outreach and follow-ups → reply watcher → sheet sync → invoice capture/handoff,
+plus horizon Signal builders, running as Cloud Run jobs (see README "Runtime").
+
+## Domain rules
+
+- **Draft-never-send:** outreach surfaces create Gmail drafts and record ids;
+  nothing in this repo sends email (`tests/test_no_send_endpoints.py` is the gate).
+- **Single write gate:** every mutating cockpit walk routes through the framework
+  `confirm_apply`; agent mode (`--agent-stdio`) is dry-run without `--allow-apply`.
+- **Public repo:** no real supplier names/ids, personal emails, internal hostnames,
+  or machine-local paths in docs or examples.
+- **Cockpit tests drive frames, not text:** assert structured `ScreenModel` frames
+  (`CockpitDriver`) or registry data — never `export_text()` scraping
+  (`tests/test_cockpit_placeholders.py` shows the pattern).
 
 ## Bumping the framework pin
 

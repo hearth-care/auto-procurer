@@ -49,4 +49,4 @@ def test_cli_scan_emits_when_flag_on(monkeypatch, fake_gcs) -> None:
     monkeypatch.setenv("XSOURCE_EMIT_SIGNALS", "1")
     result = runner.invoke(app, ["signals", "scan"])
     assert result.exit_code == 0
-    assert "emitted 0" in result.stdout  # stub horizon → 0 signals, but it ran
+    assert "emitted 0" in result.stdout  # no due horizon items, but scan ran
