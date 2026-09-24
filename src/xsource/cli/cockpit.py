@@ -37,6 +37,7 @@ from xsource.research.triage import Triage, run_triage
 from xsource.secrets import secret_from_env
 from xsource.sheet.client import SheetClient
 from xsource.signals import emit as signals_emit
+from xsource.signals.build import build_watcher_health_signals, build_xsource_signals
 from xsource.store.models import Request
 from xsource.store.remote import StoreOffline, SyncedStore, get_offline_reason
 from xsource.wiring import (
@@ -1493,6 +1494,10 @@ def doctor_build_report() -> object:
     return _status()
 
 
+def _utc_now() -> dt.datetime:
+    return dt.datetime.now(dt.UTC)
+
+
 def doctor_build_probes(report: object) -> list[Probe]:
     cfg: Config = report["cfg"]  # type: ignore[index]
     suppliers = report["suppliers"]  # type: ignore[index]
@@ -1501,6 +1506,34 @@ def doctor_build_probes(report: object) -> list[Probe]:
     budget: Budget = report["budget"]  # type: ignore[index]
     sheets_token = os.environ.get("XSOURCE_SHEETS_TOKEN_PATH", "")
     store_online = _store_online(suppliers, requests_, invoices)
+    now = _utc_now()
+    request_records = requests_.all() if requests_ is not None else []
+    stores_available = all(store is not None for store in (suppliers, requests_, invoices))
+    store_detail = (
+        f"{len(suppliers.all())} supplier(s) · {len(request_records)} request(s) · {len(invoices.all())} invoice(s)"
+        if stores_available
+        else "store unavailable"
+    )
+    watcher_signals = build_watcher_health_signals(request_records, today=now.date(), now=now)
+    open_requests = [request for request in request_records if request.status == "open"]
+    has_threads = any(
+        entry.outreach.get("thread_id") for request in open_requests for entry in request.shortlist
+    )
+    watcher_level = "ok"
+    if requests_ is None:
+        watcher_level, watcher_detail = "warn", "store unavailable"
+    elif watcher_signals:
+        watcher_level, watcher_detail = "error", watcher_signals[0].detail
+    else:
+        watcher_detail = (
+            f"fresh · {len(open_requests)} open request(s) watched"
+            if has_threads
+            else "no live outreach threads"
+        )
+    signal_count = len(build_xsource_signals(today=now.date(), now=now))
+    emission_detail = (
+        "emission enabled" if signals_emit._enabled() else "not sent (XSOURCE_EMIT_SIGNALS off)"
+    )
     return [
         Probe(
             name="Google Maps key",
@@ -1548,6 +1581,19 @@ def doctor_build_probes(report: object) -> list[Probe]:
             level="ok" if cfg.home_postcode else "error",
             detail=cfg.home_postcode or "missing",
             fix=Fix("Set XSOURCE_HOME_POSTCODE", "export XSOURCE_HOME_POSTCODE=...", run=None),
+        ),
+        Probe(
+            name="Store records",
+            level="ok" if stores_available else "warn",
+            detail=store_detail,
+            fix=None,
+        ),
+        Probe(name="Reply watcher", level=watcher_level, detail=watcher_detail, fix=None),
+        Probe(
+            name="Pending signals",
+            level="warn" if signal_count else "ok",
+            detail=f"{signal_count} raised · {emission_detail}",
+            fix=None,
         ),
     ]
 

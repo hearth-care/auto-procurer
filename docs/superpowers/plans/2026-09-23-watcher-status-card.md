@@ -159,7 +159,7 @@ uv run pytest -q
 
 ## Task 3: Three new Doctor probes
 
-- [ ] Create `tests/test_doctor_probes.py`. Build the report dict that `doctor_build_report`
+- [x] Create `tests/test_doctor_probes.py`. Build the report dict that `doctor_build_report`
       returns by hand: `cfg` from `Config.from_env()` with `XSOURCE_STATE_DIR` set to `tmp_path`,
       three `JsonlStore` objects marked online (`store.offline = False`), and a small stub budget
       whose `level()` returns `"ok"` and `spent()` returns `0.0`. Monkeypatch `cockpit._utc_now`
@@ -188,8 +188,8 @@ uv run pytest -q
         with `kind == "doctor"`, and assert its `probes` region has rows for the three new probe
         names. Read `clonway_cockpit.render.model_doctor` for the row fields before writing the
         assertion.
-- [ ] Run `uv run pytest -q tests/test_doctor_probes.py` and confirm it **fails**.
-- [ ] In `src/xsource/cli/cockpit.py`:
+- [x] Run `uv run pytest -q tests/test_doctor_probes.py` and confirm it **fails**.
+- [x] In `src/xsource/cli/cockpit.py`:
       - add `_utc_now()`;
       - import `build_watcher_health_signals` and `build_xsource_signals` from
         `xsource.signals.build` (the module is already loaded through `xsource.signals.emit`, so
@@ -207,8 +207,8 @@ uv run pytest -q
           `"warn"` when `n` is above 0, else `"ok"`; detail `f"{n} raised · "` followed by
           `"sent to the fleet"` when `signals_emit._enabled()` is true, else
           `"not sent (XSOURCE_EMIT_SIGNALS off)"`.
-- [ ] Run `uv run pytest -q tests/test_doctor_probes.py` and confirm it passes.
-- [ ] Commit: `feat(doctor): add store record, reply watcher and pending signal probes`
+- [x] Run `uv run pytest -q tests/test_doctor_probes.py` and confirm it passes.
+- [x] Commit: `feat(doctor): add store record, reply watcher and pending signal probes`
 
 ## Task 4: Update the operator documents
 
@@ -301,7 +301,7 @@ Operator-facing: yes. Office staff see a working Reply watcher card and three mo
 ## HANDOFF NOTES
 
 - Base commit: `5e8b6d3`.
-- Status: Tasks 1–2 complete; next implement Task 3 Doctor probes.
+- Status: Tasks 1–3 complete; next update operator documents and run full gates.
 - Task 1: CLI characterisation passed unchanged (2 passed); helper test failed with the expected AttributeError; shared implementation passed both files (13 passed).
 - Pre-flight: Tasks 1 and 2 share ordered string rows; Task 3 reuses existing signal builders. No interface conflicts or dependencies.
 - Storage: verified approved external volume; environment and caches external, expected growth below 1 GiB. No diagnostic copies.
@@ -312,3 +312,6 @@ Operator-facing: yes. Office staff see a working Reply watcher card and three mo
   changing the definition.
 
 - Task 2: five expected failures before implementation; 35 passed after wiring the card. Empty/quarantined stores also covered; shelf order test unchanged.
+
+- Task 3: missing probes failed before implementation; 16 passed after implementation. Includes exact two-hour boundary, never checked, closed threads, missing stores and emission on/off.
+- Ruling: enabled signals say "emission enabled", replacing the planned "sent to the fleet". The flag proves configuration only; the existing emitter explicitly swallows delivery failures. Claiming delivery would mislead operators.
