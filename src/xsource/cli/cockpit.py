@@ -856,10 +856,14 @@ def _watcher_status_step(ctx: WizardContext, bag: dict) -> StepResult:
         ),
         default="never",
     )
+    summary = (
+        f"{len(rows)} open request(s) watched · last check {latest}{_quarantine_suffix(requests_)}"
+    )
+    message = summary if not rows else summary + "\n" + "\n".join(rows)
     return StepResult(
         ok=True,
         data={
-            "summary": f"{len(rows)} open request(s) watched · last check {latest}{_quarantine_suffix(requests_)}",
+            "summary": message,
             "rows": rows,
         },
     )
@@ -1530,10 +1534,15 @@ def doctor_build_probes(report: object) -> list[Probe]:
             if has_threads
             else "no live outreach threads"
         )
-    signal_count = len(build_xsource_signals(today=now.date(), now=now))
     emission_detail = (
         "emission enabled" if signals_emit._enabled() else "not sent (XSOURCE_EMIT_SIGNALS off)"
     )
+    if stores_available:
+        signal_count = len(build_xsource_signals(today=now.date(), now=now))
+        pending_level = "warn" if signal_count else "ok"
+        pending_detail = f"{signal_count} raised · {emission_detail}"
+    else:
+        pending_level, pending_detail = "warn", "store unavailable"
     return [
         Probe(
             name="Google Maps key",
@@ -1591,8 +1600,8 @@ def doctor_build_probes(report: object) -> list[Probe]:
         Probe(name="Reply watcher", level=watcher_level, detail=watcher_detail, fix=None),
         Probe(
             name="Pending signals",
-            level="warn" if signal_count else "ok",
-            detail=f"{signal_count} raised · {emission_detail}",
+            level=pending_level,
+            detail=pending_detail,
             fix=None,
         ),
     ]

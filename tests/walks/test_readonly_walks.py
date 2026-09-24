@@ -229,13 +229,16 @@ def test_watcher_status_step_summary_and_rows(monkeypatch, tmp_path):
     result = cockpit._watcher_status_step(_ctx([]), {})
     assert result.ok is True
     assert result.data == {
-        "summary": "2 open request(s) watched · last check 2026-09-23T09:58:00+00:00",
+        "summary": "2 open request(s) watched · last check 2026-09-23T09:58:00+00:00\n"
+        "r-0001 last_checked=2026-09-23T09:58:00+00:00\n"
+        "r-0002 last_checked=-",
         "rows": ["r-0001 last_checked=2026-09-23T09:58:00+00:00", "r-0002 last_checked=-"],
     }
     request = store.all()[0]
     request.watcher = {}
     store.upsert(request)
-    assert cockpit._watcher_status_step(_ctx([]), {}).data["summary"].endswith("· last check never")
+    summary = cockpit._watcher_status_step(_ctx([]), {}).data["summary"]
+    assert summary.splitlines()[0].endswith("· last check never")
 
 
 def test_watcher_status_walk_result_via_drive(monkeypatch, tmp_path):
@@ -255,7 +258,9 @@ def test_watcher_status_walk_result_via_drive(monkeypatch, tmp_path):
     assert results and results[0].meta["ok"] is True
     assert (
         results[0].meta["message"]
-        == "2 open request(s) watched · last check 2026-09-23T09:58:00+00:00"
+        == "2 open request(s) watched · last check 2026-09-23T09:58:00+00:00\n"
+        "r-0001 last_checked=2026-09-23T09:58:00+00:00\n"
+        "r-0002 last_checked=-"
     )
 
 
@@ -277,4 +282,21 @@ def test_watcher_status_empty_and_quarantined(monkeypatch, tmp_path):
     assert cockpit._watcher_status_step(_ctx([]), {}).data == {
         "summary": "0 open request(s) watched · last check never · quarantined: 1 corrupt line(s)",
         "rows": [],
+    }
+
+
+def test_watcher_status_rows_with_quarantine(monkeypatch, tmp_path):
+    from xsource.cli import cockpit
+
+    store = _watcher_requests(tmp_path)
+    with open(store.path, "a") as f:
+        f.write("not json\n")
+    reloaded = JsonlStore(store.path, Request)
+    monkeypatch.setattr(cockpit, "build_stores", lambda cfg: (object(), reloaded, object()))
+    assert cockpit._watcher_status_step(_ctx([]), {}).data == {
+        "summary": "2 open request(s) watched · last check 2026-09-23T09:58:00+00:00"
+        " · quarantined: 1 corrupt line(s)\n"
+        "r-0001 last_checked=2026-09-23T09:58:00+00:00\n"
+        "r-0002 last_checked=-",
+        "rows": ["r-0001 last_checked=2026-09-23T09:58:00+00:00", "r-0002 last_checked=-"],
     }

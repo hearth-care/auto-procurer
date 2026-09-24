@@ -82,13 +82,19 @@ def test_store_records_probe_counts(report):
 
 
 @pytest.mark.parametrize("missing", ["suppliers", "requests", "invoices"])
-def test_store_records_probe_unavailable(report, missing):
+def test_store_records_probe_unavailable(report, missing, monkeypatch):
+    def fail_if_called(**kw):
+        raise AssertionError("build_xsource_signals must not run when a store is unavailable")
+
+    monkeypatch.setattr(cockpit, "build_xsource_signals", fail_if_called)
     report[missing] = None
     probe = _probe(report, "Store records")
     assert (probe.level, probe.detail) == ("warn", "store unavailable")
     if missing == "requests":
         probe = _probe(report, "Reply watcher")
         assert (probe.level, probe.detail) == ("warn", "store unavailable")
+    probe = _probe(report, "Pending signals")
+    assert (probe.level, probe.detail) == ("warn", "store unavailable")
 
 
 @pytest.mark.parametrize(

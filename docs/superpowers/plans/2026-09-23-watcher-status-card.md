@@ -330,3 +330,42 @@ Operator-facing: yes. Office staff see a working Reply watcher card and three mo
 - Storage receipt: environment 265 MiB; mypy cache 21 MiB; test scratch 1.3 MiB, all external. Internal free space remained 46 GiB. Rebuildable environment retained for QA, excluded from Time Machine; no diagnostic copies made.
 - RUNBOOK DELTA: shelf E → 3 now opens request check times; G adds Store records, Reply watcher and Pending signals. Investigate a stale watcher using its job/logs; amber signals count current work and emission enabled is not delivery confirmation. No new provisioning, credentials, commands or sign-offs.
 - OPERATOR TODO: none for implementation. Signal emission remains unchanged and defaults off.
+
+### QA fix round (24 September 2026, fixer-claude-20260924T031913Z-29411-8)
+
+QA found the framework's `run_walk` only reads `bag["summary"]`/`bag["result_links"]` when
+building the result screen and its agent frame (`clonway_cockpit/walk.py:572-589`,
+`model_walk_result`) — the Reply watcher step's `data["rows"]` was silently dropped, so the
+card showed a count and one timestamp but never the per-request rows the plan's Goal 1
+promised. Fixed inside this repo's fence, without touching the pinned `clonway_cockpit`
+package: `_watcher_status_step` now folds the rows into the same string it already put in
+`data["summary"]` (`summary + "\n" + "\n".join(rows)` when there are open requests, unchanged
+when there are none), so both the terminal render and the agent's `walk.result` frame carry
+every row. Covered the sibling states of that same code path: no rows, rows with no
+quarantine, rows with quarantine, and zero rows with quarantine (already existing). The two
+pre-existing walks with the identical framework gap (`request.list`, `book.search`) are out of
+this PR's fence and stay filed as https://github.com/hearth-care/auto-procurer/issues/33.
+
+QA's nit: the new "Pending signals" Doctor probe called `build_xsource_signals`, which does its
+own independent `build_stores` call wrapped in `contextlib.suppress(Exception)` and returns
+`()` on failure — so a broken store showed a green "0 raised" next to a "Store records" line
+already saying "store unavailable" on the same screen. Fixed by gating the probe on the same
+`stores_available` flag the "Store records" and "Reply watcher" probes already use: when a
+store is missing, "Pending signals" now reports `warn` / `store unavailable` and never calls
+`build_xsource_signals` at all (proven by a test that fails if it is called). Verified this for
+all three stores (`suppliers`, `requests`, `invoices`), not just the one QA cited.
+
+No `RECURRENCE` class was named in the QA FAIL (`RECURRENCE: none`), so no AXES/MATRIX
+declaration is required for this round.
+
+Gate results (24 September 2026, after the fix):
+- `uv run ruff check .` → `All checks passed!`
+- `uv run ruff format --check .` → `159 files already formatted`
+- `uv run mypy src` → `Success: no issues found in 62 source files`
+- `uv run pytest -q` → `366 passed in 14.64s`
+- `uv run pytest -q tests/test_no_send_endpoints.py` → `1 passed in 0.01s`
+- `git diff origin/main --stat` → only the files already named in the implementation fence
+  above, plus this plan doc.
+- `origin/main` fetched; no new commits since this branch's base — no rebase required.
+
+Status: fix round complete, ready for independent QA again.
