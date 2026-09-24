@@ -6,6 +6,7 @@ import contextlib
 import datetime as dt
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -35,7 +36,9 @@ from xsource.research.pipeline import RunCaps, run_research
 from xsource.research.triage import Triage, run_triage
 from xsource.secrets import secret_from_env
 from xsource.sheet.client import SheetClient
+from xsource.signals import build as signals_build
 from xsource.signals import emit as signals_emit
+from xsource.store.models import Request
 from xsource.store.remote import StoreOffline, SyncedStore, get_offline_reason
 from xsource.wiring import (
     build_budget,
@@ -46,6 +49,7 @@ from xsource.wiring import (
 
 _APP_LABEL = "xsource"
 
+_CLI_WATCHER_STATUS = "xsource watcher status"
 _CLI_REQUEST_LIST = "xsource request list"
 _CLI_BOOK_SEARCH = "xsource book search"
 _CLI_BOOK_IMPORT = "xsource book import"
@@ -74,6 +78,8 @@ _INVOICE_CAPTURE_BLAST = BlastRadius(
     summary="Records one supplier invoice in the xsource store and links it to supplier/request history. It does not pay money.",
     reversible="Invoice and price-history rows can be corrected by operator edit.",
 )
+
+_WATCHER_STATUS_BLAST = BlastRadius(summary="Writes nothing.", reversible="No write is performed.")
 
 _REQUEST_LIST_BLAST = BlastRadius(
     summary="Writes nothing.",
@@ -830,6 +836,49 @@ _invoice_capture_handler = make_walk_handler(
 )
 
 
+def watcher_status_rows(records: Sequence[Request]) -> list[str]:
+    return [
+        f"{request.id} last_checked={request.watcher.get('last_checked_at', '-')}"
+        for request in records
+        if request.status == "open"
+    ]
+
+
+def _watcher_status_step(ctx: WizardContext, bag: dict) -> StepResult:
+    _suppliers, requests_, _invoices = build_stores(Config.from_env())
+    records = requests_.all()
+    rows = watcher_status_rows(records)
+    latest = max(
+        (
+            request.watcher["last_checked_at"]
+            for request in records
+            if request.status == "open" and request.watcher.get("last_checked_at")
+        ),
+        default="never",
+    )
+    summary = (
+        f"{len(rows)} open request(s) watched · last check {latest}{_quarantine_suffix(requests_)}"
+    )
+    message = summary if not rows else summary + "\n" + "\n".join(rows)
+    return StepResult(
+        ok=True,
+        data={
+            "summary": message,
+            "rows": rows,
+        },
+    )
+
+
+_watcher_status_handler = make_walk_handler(
+    title="Reply watcher",
+    steps=[Step(label="Status", run=_watcher_status_step)],
+    blast_radius=_WATCHER_STATUS_BLAST,
+    preconditions_fn=_readonly_preconditions,
+    equivalent_cli=_CLI_WATCHER_STATUS,
+    total=2,
+)
+
+
 def _request_list_step(ctx: WizardContext, bag: dict) -> StepResult:
     _suppliers, requests_, _invoices = build_stores(Config.from_env())
     records = sorted(requests_.all(), key=lambda r: r.id)
@@ -1282,13 +1331,6 @@ def register_all() -> None:
             "xsource request sync",
         ),
         (
-            "watcher.status",
-            "E",
-            "Reply watcher",
-            "Show watched threads, reply parsing, and heartbeat status. Read-only via CLI: xsource watcher status.",
-            "xsource watcher status",
-        ),
-        (
             "partner.checkatrade",
             "D",
             "Checkatrade partner lead",
@@ -1306,6 +1348,18 @@ def register_all() -> None:
                 run=None,
             )
         )
+    register_capability(
+        CapabilitySpec(
+            key="watcher.status",
+            shelf="E",
+            title="Reply watcher",
+            summary="Show which open requests the reply watcher is checking and when it last checked each. Read-only.",
+            equivalent_cli=_CLI_WATCHER_STATUS,
+            run=_watcher_status_handler,
+            blast_radius=_WATCHER_STATUS_BLAST,
+            money_movement=False,
+        )
+    )
     register_capability(
         CapabilitySpec(
             key="doctor",
@@ -1444,6 +1498,96 @@ def doctor_build_report() -> object:
     return _status()
 
 
+def _utc_now() -> dt.datetime:
+    return dt.datetime.now(dt.UTC)
+
+
+def _pending_signal_count(cfg: Config, suppliers, requests_, invoices, *, now: dt.datetime) -> int:
+    # Counts over the snapshot the Doctor already loaded instead of calling
+    # build_xsource_signals: that scan re-reads the stores and suppresses every failure into an
+    # empty result, which would show here as a healthy "0 raised". This mirrors the scan's
+    # builder list; tests/test_doctor_probes.py fails if a builder is added there but not here.
+    today = now.date()
+    request_records = requests_.all()
+    supplier_records = suppliers.all()
+    invoice_records = invoices.all()
+    store_offline = suppliers.offline or requests_.offline or invoices.offline
+    signals = (
+        *signals_build.build_chase_quote_signals(
+            request_records, today=today, now=now, chase_after_days=cfg.chase_after_days
+        ),
+        *signals_build.build_recurring_service_signals(
+            supplier_records, request_records, today=today, now=now
+        ),
+        *signals_build.build_watcher_health_signals(request_records, today=today, now=now),
+        *signals_build.build_store_offline_signals(
+            request_records, today=today, now=now, store_offline=store_offline
+        ),
+        *signals_build.build_payment_required_signals(
+            invoice_records, supplier_records, today=today, now=now
+        ),
+        *signals_build.build_invoice_variance_signals(
+            invoice_records, supplier_records, today=today, now=now
+        ),
+        *signals_build.build_rejected_invoice_signals(
+            invoice_records, supplier_records, today=today, now=now
+        ),
+    )
+    return len(signals)
+
+
+def _reply_watcher_probe(requests_, request_records: list[Request], now: dt.datetime) -> Probe:
+    if requests_ is None:
+        return Probe(name="Reply watcher", level="warn", detail="store unavailable", fix=None)
+    try:
+        stale = signals_build.build_watcher_health_signals(
+            request_records, today=now.date(), now=now
+        )
+    except Exception as exc:
+        return Probe(
+            name="Reply watcher",
+            level="error",
+            detail=f"check failed ({type(exc).__name__})",
+            fix=None,
+        )
+    if stale:
+        return Probe(name="Reply watcher", level="error", detail=stale[0].detail, fix=None)
+    open_requests = [request for request in request_records if request.status == "open"]
+    has_threads = any(
+        entry.outreach.get("thread_id") for request in open_requests for entry in request.shortlist
+    )
+    detail = (
+        f"fresh · {len(open_requests)} open request(s) watched"
+        if has_threads
+        else "no live outreach threads"
+    )
+    return Probe(name="Reply watcher", level="ok", detail=detail, fix=None)
+
+
+def _pending_signals_probe(cfg: Config, suppliers, requests_, invoices, now: dt.datetime) -> Probe:
+    if suppliers is None or requests_ is None or invoices is None:
+        return Probe(name="Pending signals", level="warn", detail="store unavailable", fix=None)
+    try:
+        count = _pending_signal_count(cfg, suppliers, requests_, invoices, now=now)
+    except Exception as exc:
+        # A failed scan must never pass for "nothing to follow up".
+        return Probe(
+            name="Pending signals",
+            level="error",
+            detail=f"scan failed ({type(exc).__name__}) · count unavailable",
+            fix=None,
+        )
+    emission = (
+        "emission enabled" if signals_emit._enabled() else "not sent (XSOURCE_EMIT_SIGNALS off)"
+    )
+    return Probe(
+        name="Pending signals",
+        level="warn" if count else "ok",
+        detail=f"{count} raised · {emission}",
+        fix=None,
+    )
+
+
 def doctor_build_probes(report: object) -> list[Probe]:
     cfg: Config = report["cfg"]  # type: ignore[index]
     suppliers = report["suppliers"]  # type: ignore[index]
@@ -1452,6 +1596,14 @@ def doctor_build_probes(report: object) -> list[Probe]:
     budget: Budget = report["budget"]  # type: ignore[index]
     sheets_token = os.environ.get("XSOURCE_SHEETS_TOKEN_PATH", "")
     store_online = _store_online(suppliers, requests_, invoices)
+    now = _utc_now()
+    request_records = requests_.all() if requests_ is not None else []
+    stores_available = all(store is not None for store in (suppliers, requests_, invoices))
+    store_detail = (
+        f"{len(suppliers.all())} supplier(s) · {len(request_records)} request(s) · {len(invoices.all())} invoice(s)"
+        if stores_available
+        else "store unavailable"
+    )
     return [
         Probe(
             name="Google Maps key",
@@ -1500,6 +1652,14 @@ def doctor_build_probes(report: object) -> list[Probe]:
             detail=cfg.home_postcode or "missing",
             fix=Fix("Set XSOURCE_HOME_POSTCODE", "export XSOURCE_HOME_POSTCODE=...", run=None),
         ),
+        Probe(
+            name="Store records",
+            level="ok" if stores_available else "warn",
+            detail=store_detail,
+            fix=None,
+        ),
+        _reply_watcher_probe(requests_, request_records, now),
+        _pending_signals_probe(cfg, suppliers, requests_, invoices, now),
     ]
 
 

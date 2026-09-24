@@ -27,7 +27,7 @@ XSOURCE_EMIT_SIGNALS=1 uv run xsource signals scan
 ```
 xsource signals scan          # build and emit forward-item Signals
 xsource watcher run           # poll Gmail for supplier replies (loop)
-xsource watcher status        # show watcher state / last-seen thread IDs
+xsource watcher status        # open requests and when the watcher last checked each
 xsource request sync          # sync a single request record from the Sheet
 xsource request sync-all      # sync all open request records
 xsource request trigger       # parse an email/chat trigger and show extraction
@@ -60,7 +60,7 @@ following shelves:
 | C | Black book | Search the supplier database |
 | D | Publish | Publish a shortlist to Google Sheets and share with staff |
 | E | Outreach | Draft Gmail outreach to shortlisted suppliers (never sends) |
-| G | Diagnostics & setup | Doctor probes: config, credentials, store, budget |
+| G | Diagnostics & setup | Doctor probes: config, credentials, store, budget, store record counts, reply watcher, pending signals |
 
 **Write-gate / draft-never-send posture.** All write paths go through the
 `confirm_apply` gate. In agent mode (`--agent-stdio`) the cockpit is dry-run

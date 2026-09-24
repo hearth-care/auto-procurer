@@ -191,3 +191,112 @@ def test_request_list_walk_result_via_drive(monkeypatch, tmp_path):
     results = [m for m in stream if m.kind == "walk.result"]
     assert results and results[0].meta["ok"] is True
     assert results[0].meta["message"] == "1 open · 2 total"
+
+
+def _watcher_requests(tmp_path):
+    store = JsonlStore(tmp_path / "requests.jsonl", Request)
+    for request_id, status, watcher in [
+        ("r-0001", "open", {"last_checked_at": "2026-09-23T09:58:00+00:00"}),
+        ("r-0002", "open", {}),
+        ("r-0003", "closed", {"last_checked_at": "2026-09-24T09:58:00+00:00"}),
+    ]:
+        store.upsert(
+            Request(
+                id=request_id,
+                created_at="2026-09-23T09:00:00+00:00",
+                raw_need="repair",
+                status=status,
+                watcher=watcher,
+            )
+        )
+    return store
+
+
+def test_watcher_status_rows_matches_cli_lines(tmp_path):
+    from xsource.cli import cockpit
+
+    assert cockpit.watcher_status_rows(_watcher_requests(tmp_path).all()) == [
+        "r-0001 last_checked=2026-09-23T09:58:00+00:00",
+        "r-0002 last_checked=-",
+    ]
+
+
+def test_watcher_status_step_summary_and_rows(monkeypatch, tmp_path):
+    from xsource.cli import cockpit
+
+    store = _watcher_requests(tmp_path)
+    monkeypatch.setattr(cockpit, "build_stores", lambda cfg: (object(), store, object()))
+    result = cockpit._watcher_status_step(_ctx([]), {})
+    assert result.ok is True
+    assert result.data == {
+        "summary": "2 open request(s) watched · last check 2026-09-23T09:58:00+00:00\n"
+        "r-0001 last_checked=2026-09-23T09:58:00+00:00\n"
+        "r-0002 last_checked=-",
+        "rows": ["r-0001 last_checked=2026-09-23T09:58:00+00:00", "r-0002 last_checked=-"],
+    }
+    request = store.all()[0]
+    request.watcher = {}
+    store.upsert(request)
+    summary = cockpit._watcher_status_step(_ctx([]), {}).data["summary"]
+    assert summary.splitlines()[0].endswith("· last check never")
+
+
+def test_watcher_status_walk_result_via_drive(monkeypatch, tmp_path):
+    from clonway_cockpit.agent import CockpitDriver
+
+    from xsource.cli import cockpit
+
+    monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
+    stores = (
+        _online(JsonlStore(tmp_path / "suppliers.jsonl", Supplier)),
+        _online(_watcher_requests(tmp_path)),
+        _online(JsonlStore(tmp_path / "invoices.jsonl", InvoiceRecord)),
+    )
+    monkeypatch.setattr(cockpit, "build_stores", lambda cfg: stores)
+    stream = CockpitDriver(cockpit._host(agent_mode=True), keys=["E", "3", "y"]).run()
+    results = [m for m in stream if m.kind == "walk.result"]
+    assert results and results[0].meta["ok"] is True
+    assert (
+        results[0].meta["message"]
+        == "2 open request(s) watched · last check 2026-09-23T09:58:00+00:00\n"
+        "r-0001 last_checked=2026-09-23T09:58:00+00:00\n"
+        "r-0002 last_checked=-"
+    )
+
+
+def test_watcher_status_walk_never_writes(monkeypatch, tmp_path):
+    from xsource.cli import cockpit
+
+    store = _NoWriteStore(_watcher_requests(tmp_path))
+    monkeypatch.setattr(cockpit, "build_stores", lambda cfg: (object(), store, object()))
+    assert cockpit._watcher_status_step(_ctx([]), {}).ok is True
+
+
+def test_watcher_status_empty_and_quarantined(monkeypatch, tmp_path):
+    from xsource.cli import cockpit
+
+    path = tmp_path / "requests.jsonl"
+    path.write_text("not json\n")
+    store = JsonlStore(path, Request)
+    monkeypatch.setattr(cockpit, "build_stores", lambda cfg: (object(), store, object()))
+    assert cockpit._watcher_status_step(_ctx([]), {}).data == {
+        "summary": "0 open request(s) watched · last check never · quarantined: 1 corrupt line(s)",
+        "rows": [],
+    }
+
+
+def test_watcher_status_rows_with_quarantine(monkeypatch, tmp_path):
+    from xsource.cli import cockpit
+
+    store = _watcher_requests(tmp_path)
+    with open(store.path, "a") as f:
+        f.write("not json\n")
+    reloaded = JsonlStore(store.path, Request)
+    monkeypatch.setattr(cockpit, "build_stores", lambda cfg: (object(), reloaded, object()))
+    assert cockpit._watcher_status_step(_ctx([]), {}).data == {
+        "summary": "2 open request(s) watched · last check 2026-09-23T09:58:00+00:00"
+        " · quarantined: 1 corrupt line(s)\n"
+        "r-0001 last_checked=2026-09-23T09:58:00+00:00\n"
+        "r-0002 last_checked=-",
+        "rows": ["r-0001 last_checked=2026-09-23T09:58:00+00:00", "r-0002 last_checked=-"],
+    }

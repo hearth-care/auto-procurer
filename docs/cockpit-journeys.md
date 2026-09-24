@@ -251,26 +251,24 @@ Code path: `_request_followup_handler` → `_followup_select_step` → `_followu
 
 ---
 
-### 5c · `watcher.status` — placeholder card / live CLI
+### 5c · `watcher.status` — live read-only walk
 
-**Current state:** `run=None` — cockpit card is a static reference only.
-The CLI path (`xsource watcher status`) is fully implemented.
-Code path: `src/xsource/cli/watcher.py` → `src/xsource/watcher/state.py`.
+Open shelf `E`, item `3` (Reply watcher), then continue through the read-only preflight.
+The screen lists each open request and when the watcher last checked it. The summary gives
+how many requests are watched and the latest check, or "never" if none has been checked.
+Closed requests are excluded. Corrupt records are reported in the summary.
 
-The CLI prints thread count, pending-reply backlog, last-seen timestamp, and heartbeat.
-The Reply watcher daemon (`xsource watcher start`) runs as a launchd service.
+The rows match `xsource watcher status`, which prints the open-request count followed by
+request ids and their last-check timestamps. Neither view reports a thread count, backlog
+or GCS heartbeat. Both use `watcher_status_rows` in `src/xsource/cli/cockpit.py`.
 
-**Preconditions:**
+**Preconditions:** the request store is readable. An offline local cache is allowed;
+Gmail credentials are not needed to view status.
 
-| Precondition | Source |
-|---|---|
-| `XSOURCE_GMAIL_TOKEN_PATH` | OAuth token — thread polling |
-| GCS store reachable | reads watcher state |
+**Mutation risk:** no request updates, drafts or outgoing messages. Loading the existing
+store may refresh its local cache or quarantine corrupt lines.
 
-**Mutation risk:** read-only — no mutations.
-
-**Target live path:** cockpit card wired to the real watcher state the CLI already prints,
-including thread list, pending-replies backlog, and heartbeat timestamp.
+**Target live path:** implemented by the [watcher status plan](superpowers/plans/2026-09-23-watcher-status-card.md).
 
 ---
 
@@ -281,8 +279,9 @@ including thread list, pending-replies backlog, and heartbeat timestamp.
 ### 6a · `doctor` — live (framework-integrated)
 
 **Current state:** doctor screen is fully implemented via framework host hooks.
-Code path: `doctor_build_report` → `doctor_build_probes` (6 real probes: Maps key,
-Anthropic key, Sheets token, Store, Budget, Home postcode).
+Code path: `doctor_build_report` → `doctor_build_probes` (9 probes: Maps key,
+Anthropic key, Sheets token, Store, Budget, Home postcode, Store records, Reply watcher,
+Pending signals).
 The capability entry has `run=None` because doctor is invoked by the framework directly
 (pressing G), not via a cockpit walk handler.
 
@@ -290,19 +289,30 @@ The capability entry has `run=None` because doctor is invoked by the framework d
 
 **Mutation risk:** read-only — no mutations.
 
-**Target live path:** current implementation covers auth, config, and store readiness.
-Future extension: add store record counts, watcher heartbeat, and pending-signal count
-to give one combined health surface without needing multiple CLI commands.
+"Store records" counts suppliers, requests and invoices. "Reply watcher" uses the same
+staleness rule as the fleet signal: it is red when live outreach threads exist and no open
+request has been checked within the last two hours. Check the watcher job and its logs;
+this warning alone does not establish why checks have stopped.
+
+"Pending signals" counts items currently raised by the horizon scan, rather than a stored
+queue, using the records the Doctor has already loaded. Amber means there are items to review.
+The detail shows whether emission is enabled; it does not confirm delivery. If any part of the
+scan fails, the line turns red with "scan failed · count unavailable" rather than showing a
+count, so a zero always means the scan ran and found nothing. "Reply watcher" likewise shows
+red "check failed" if its staleness check cannot run. These probes have no automatic fixes and
+do not emit signals.
+
+**Target live path:** implemented by the [watcher status plan](superpowers/plans/2026-09-23-watcher-status-card.md).
 
 ---
 
 ## Follow-up scoping
 
-The table below maps each unbuilt target path to a rough size and suggested ordering.
+The table below records completed improvements and the remaining suggested work.
 
 | # | Capability | Target | Size | Notes |
 |---|---|---|---|---|
-| 1 | `watcher.status` | Cockpit card wired to live watcher state | S | Reuse `xsource watcher status` data; card + model twin; no new logic |
+| 1 | `watcher.status` | Cockpit card wired to live watcher state | S | Built: [watcher status plan](superpowers/plans/2026-09-23-watcher-status-card.md); shared CLI rows and structured frames |
 | 2 | `request.sync` | Sync walk in cockpit + `--dry-run` on `sync-all` | M | Two sub-tasks: cockpit walk (read path preview + confirm-apply) and CLI `--dry-run` flag |
-| 3 | `doctor` | Add store counts + watcher + signal count to probes | XS | Extend `doctor_build_probes`; no new screens or walks required |
+| 3 | `doctor` | Add store counts + watcher + signal count to probes | XS | Built: [watcher status plan](superpowers/plans/2026-09-23-watcher-status-card.md); three read-only probes |
 | 4 | `partner.checkatrade` | Checkatrade walk under guarded-apply gate | L | Requires operator DPA sign-off; gate token handshake; post path scoped carefully |
