@@ -212,14 +212,14 @@ uv run pytest -q
 
 ## Task 4: Update the operator documents
 
-- [ ] In `docs/cockpit-journeys.md`: rewrite section 5c to say the card is live, list what it
+- [x] In `docs/cockpit-journeys.md`: rewrite section 5c to say the card is live, list what it
       shows, and remove the incorrect claim about thread count, backlog and heartbeat; add the
       three probes to section 6a; mark follow-up rows 1 and 3 as built, naming this plan.
-- [ ] In `README.md`: change the shelf G row (line 63) to "Doctor probes: config, credentials,
+- [x] In `README.md`: change the shelf G row (line 63) to "Doctor probes: config, credentials,
       store, budget, store record counts, reply watcher, pending signals", and the
       `xsource watcher status` comment (line 30) to "open requests and when the watcher last
       checked each".
-- [ ] Commit: `docs: record the live Reply watcher card and new Doctor probes`
+- [x] Commit: `docs: record the live Reply watcher card and new Doctor probes`
 
 ## Task 5: Full gates
 
@@ -294,14 +294,14 @@ Operator-facing: yes. Office staff see a working Reply watcher card and three mo
   It is the same information as `xsource watcher status`.
 - The Doctor (`G`) shows "Store records", "Reply watcher" and "Pending signals". A red "Reply
   watcher" line means outreach threads are live but no open request has been checked for more
-  than 2 hours: the watcher job has stopped and needs restarting. "Pending signals" in amber is
+  than 2 hours: check the watcher job and its logs to establish the cause. "Pending signals" in amber is
   normal when there is follow-up work; it counts items, it does not mean anything is broken.
 - No new command, flag, environment variable or sign-off.
 
 ## HANDOFF NOTES
 
 - Base commit: `5e8b6d3`.
-- Status: Tasks 1–3 complete; next update operator documents and run full gates.
+- Status: Tasks 1–4 complete; next run full gates and final review.
 - Task 1: CLI characterisation passed unchanged (2 passed); helper test failed with the expected AttributeError; shared implementation passed both files (13 passed).
 - Pre-flight: Tasks 1 and 2 share ordered string rows; Task 3 reuses existing signal builders. No interface conflicts or dependencies.
 - Storage: verified approved external volume; environment and caches external, expected growth below 1 GiB. No diagnostic copies.
@@ -315,3 +315,5 @@ Operator-facing: yes. Office staff see a working Reply watcher card and three mo
 
 - Task 3: missing probes failed before implementation; 16 passed after implementation. Includes exact two-hour boundary, never checked, closed threads, missing stores and emission on/off.
 - Ruling: enabled signals say "emission enabled", replacing the planned "sent to the fleet". The flag proves configuration only; the existing emitter explicitly swallows delivery failures. Claiming delivery would mislead operators.
+
+- Task 4: operator guidance updated and reviewed against the implementation. Corrected prior claims about thread counts, backlog, heartbeat and the status command needing Gmail credentials. Existing store-loading cache/quarantine effects are documented; the new logic never upserts or emits.
