@@ -191,3 +191,31 @@ def test_request_list_walk_result_via_drive(monkeypatch, tmp_path):
     results = [m for m in stream if m.kind == "walk.result"]
     assert results and results[0].meta["ok"] is True
     assert results[0].meta["message"] == "1 open · 2 total"
+
+
+def _watcher_requests(tmp_path):
+    store = JsonlStore(tmp_path / "requests.jsonl", Request)
+    for request_id, status, watcher in [
+        ("r-0001", "open", {"last_checked_at": "2026-09-23T09:58:00+00:00"}),
+        ("r-0002", "open", {}),
+        ("r-0003", "closed", {"last_checked_at": "2026-09-24T09:58:00+00:00"}),
+    ]:
+        store.upsert(
+            Request(
+                id=request_id,
+                created_at="2026-09-23T09:00:00+00:00",
+                raw_need="repair",
+                status=status,
+                watcher=watcher,
+            )
+        )
+    return store
+
+
+def test_watcher_status_rows_matches_cli_lines(tmp_path):
+    from xsource.cli import cockpit
+
+    assert cockpit.watcher_status_rows(_watcher_requests(tmp_path).all()) == [
+        "r-0001 last_checked=2026-09-23T09:58:00+00:00",
+        "r-0002 last_checked=-",
+    ]

@@ -88,7 +88,7 @@ uv run pytest -q
 
 ## Task 1: Pin the `xsource watcher status` output, then share its rows
 
-- [ ] Add `test_watcher_status_prints_open_requests_and_last_check` to
+- [x] Add `test_watcher_status_prints_open_requests_and_last_check` to
       `tests/watcher/test_cli_run.py`. Seed a `JsonlStore(tmp_path / "requests.jsonl", Request)`
       with three requests: `r-0001` open with `watcher={"last_checked_at":
       "2026-09-23T09:58:00+00:00"}`, `r-0002` open with no watcher data, `r-0003` closed. Set
@@ -96,22 +96,22 @@ uv run pytest -q
       `lambda cfg: (object(), store, object())`, invoke `["watcher", "status"]` with `CliRunner`,
       and assert the exit code is 0 and `result.stdout` equals exactly
       `"open_requests=2\nr-0001 last_checked=2026-09-23T09:58:00+00:00\nr-0002 last_checked=-\n"`.
-- [ ] Run `uv run pytest -q tests/watcher/test_cli_run.py` and confirm it **passes on the
+- [x] Run `uv run pytest -q tests/watcher/test_cli_run.py` and confirm it **passes on the
       unchanged code**. This is a characterisation pin: it records today's output so the next
       steps cannot change it.
-- [ ] Add `test_watcher_status_rows_matches_cli_lines` to `tests/walks/test_readonly_walks.py`:
+- [x] Add `test_watcher_status_rows_matches_cli_lines` to `tests/walks/test_readonly_walks.py`:
       with the same three requests, `cockpit.watcher_status_rows(store.all())` returns
       `["r-0001 last_checked=2026-09-23T09:58:00+00:00", "r-0002 last_checked=-"]`.
-- [ ] Run `uv run pytest -q tests/walks/test_readonly_walks.py` and confirm it **fails** with an
+- [x] Run `uv run pytest -q tests/walks/test_readonly_walks.py` and confirm it **fails** with an
       `AttributeError` for `watcher_status_rows`.
-- [ ] In `src/xsource/cli/cockpit.py`, add `watcher_status_rows(records) -> list[str]` near
+- [x] In `src/xsource/cli/cockpit.py`, add `watcher_status_rows(records) -> list[str]` near
       `_request_list_step`. It keeps store order, filters to `status == "open"`, and formats
       `f"{request.id} last_checked={request.watcher.get('last_checked_at', '-')}"`.
-- [ ] In `src/xsource/cli/watcher.py`, change `status()` to print `open_requests=N` and then the
+- [x] In `src/xsource/cli/watcher.py`, change `status()` to print `open_requests=N` and then the
       lines from `watcher_status_rows(requests.all())`, where `N` is the number of rows. Import it
       alongside the existing `_AnthropicStructuredGateway` import.
-- [ ] Run both test files again and confirm both pass.
-- [ ] Commit: `refactor(watcher): share the watcher status rows between CLI and cockpit`
+- [x] Run both test files again and confirm both pass.
+- [x] Commit: `refactor(watcher): share the watcher status rows between CLI and cockpit`
 
 ## Task 2: Wire the Reply watcher card as a read-only walk
 
@@ -301,7 +301,11 @@ Operator-facing: yes. Office staff see a working Reply watcher card and three mo
 ## HANDOFF NOTES
 
 - Base commit: `5e8b6d3`.
-- Status: plan only, not yet implemented.
+- Status: Task 1 complete; next implement Task 2 read-only walk.
+- Task 1: CLI characterisation passed unchanged (2 passed); helper test failed with the expected AttributeError; shared implementation passed both files (13 passed).
+- Pre-flight: Tasks 1 and 2 share ordered string rows; Task 3 reuses existing signal builders. No interface conflicts or dependencies.
+- Storage: verified approved external volume; environment and caches external, expected growth below 1 GiB. No diagnostic copies.
+- Known failing tests: none.
 - [ASSUMPTION] "Pending signal count" in `docs/cockpit-journeys.md` means the number of signals
   the worker's horizon scan currently raises (`build_xsource_signals`), since xsource keeps no
   queue of unsent signals. If the builder finds a stored queue, record it here and ask before

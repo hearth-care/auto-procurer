@@ -6,6 +6,7 @@ import contextlib
 import datetime as dt
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -36,6 +37,7 @@ from xsource.research.triage import Triage, run_triage
 from xsource.secrets import secret_from_env
 from xsource.sheet.client import SheetClient
 from xsource.signals import emit as signals_emit
+from xsource.store.models import Request
 from xsource.store.remote import StoreOffline, SyncedStore, get_offline_reason
 from xsource.wiring import (
     build_budget,
@@ -828,6 +830,14 @@ _invoice_capture_handler = make_walk_handler(
     equivalent_cli="xsource invoice add",
     total=2,
 )
+
+
+def watcher_status_rows(records: Sequence[Request]) -> list[str]:
+    return [
+        f"{request.id} last_checked={request.watcher.get('last_checked_at', '-')}"
+        for request in records
+        if request.status == "open"
+    ]
 
 
 def _request_list_step(ctx: WizardContext, bag: dict) -> StepResult:
