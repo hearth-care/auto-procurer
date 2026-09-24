@@ -115,7 +115,7 @@ uv run pytest -q
 
 ## Task 2: Wire the Reply watcher card as a read-only walk
 
-- [ ] In `tests/walks/test_readonly_walks.py`, add:
+- [x] In `tests/walks/test_readonly_walks.py`, add:
       - `test_watcher_status_step_summary_and_rows`: with the Task 1 store monkeypatched into
         `cockpit_mod.build_stores`, `cockpit_mod._watcher_status_step(_ctx([]), {})` returns
         `ok=True`, `data["rows"]` equal to the two rows above, and `data["summary"]` equal to
@@ -129,16 +129,16 @@ uv run pytest -q
         `meta["ok"] is True` and `meta["message"]` equal to the summary above.
       - `test_watcher_status_walk_never_writes`: wrap the request store in `_NoWriteStore` and
         run `_watcher_status_step`; it returns `ok=True` without raising.
-- [ ] In `tests/test_cockpit_placeholders.py`, remove `"watcher.status"` from
+- [x] In `tests/test_cockpit_placeholders.py`, remove `"watcher.status"` from
       `_PLACEHOLDER_STATUS_MARKERS` and delete `test_watcher_status_card_summary_via_drive`. That
       test asserts the card says "Read-only via CLI:", which is the placeholder wording this plan
       retires; the drive test above replaces it.
-- [ ] In `tests/cli/test_equivalent_cli_parity.py`, add `"watcher.status"` to the parametrize list
+- [x] In `tests/cli/test_equivalent_cli_parity.py`, add `"watcher.status"` to the parametrize list
       of `test_wired_walk_preflight_cli_matches_registry` (currently four keys: `request.list`,
       `book.search`, `book.import`, `book.publish`).
-- [ ] Run `uv run pytest -q tests/walks/test_readonly_walks.py tests/test_cockpit_placeholders.py tests/cli/test_equivalent_cli_parity.py`
+- [x] Run `uv run pytest -q tests/walks/test_readonly_walks.py tests/test_cockpit_placeholders.py tests/cli/test_equivalent_cli_parity.py`
       and confirm the three new walk tests and the new parity case **fail**.
-- [ ] In `src/xsource/cli/cockpit.py`:
+- [x] In `src/xsource/cli/cockpit.py`:
       - add `_CLI_WATCHER_STATUS = "xsource watcher status"` beside `_CLI_REQUEST_LIST`, and
         `_WATCHER_STATUS_BLAST = BlastRadius(summary="Writes nothing.", reversible="No write is
         performed.")` beside `_REQUEST_LIST_BLAST`;
@@ -153,9 +153,9 @@ uv run pytest -q
         `summary="Show which open requests the reply watcher is checking and when it last checked
         each. Read-only."`, `equivalent_cli=_CLI_WATCHER_STATUS`, `run=_watcher_status_handler`,
         `blast_radius=_WATCHER_STATUS_BLAST`, `money_movement=False`.
-- [ ] Run the same three test files and confirm they pass, including
+- [x] Run the same three test files and confirm they pass, including
       `test_shelf_item_order_is_stable` unchanged.
-- [ ] Commit: `feat(cockpit): wire the Reply watcher card to live watcher state`
+- [x] Commit: `feat(cockpit): wire the Reply watcher card to live watcher state`
 
 ## Task 3: Three new Doctor probes
 
@@ -301,7 +301,7 @@ Operator-facing: yes. Office staff see a working Reply watcher card and three mo
 ## HANDOFF NOTES
 
 - Base commit: `5e8b6d3`.
-- Status: Task 1 complete; next implement Task 2 read-only walk.
+- Status: Tasks 1–2 complete; next implement Task 3 Doctor probes.
 - Task 1: CLI characterisation passed unchanged (2 passed); helper test failed with the expected AttributeError; shared implementation passed both files (13 passed).
 - Pre-flight: Tasks 1 and 2 share ordered string rows; Task 3 reuses existing signal builders. No interface conflicts or dependencies.
 - Storage: verified approved external volume; environment and caches external, expected growth below 1 GiB. No diagnostic copies.
@@ -310,3 +310,5 @@ Operator-facing: yes. Office staff see a working Reply watcher card and three mo
   the worker's horizon scan currently raises (`build_xsource_signals`), since xsource keeps no
   queue of unsent signals. If the builder finds a stored queue, record it here and ask before
   changing the definition.
+
+- Task 2: five expected failures before implementation; 35 passed after wiring the card. Empty/quarantined stores also covered; shelf order test unchanged.

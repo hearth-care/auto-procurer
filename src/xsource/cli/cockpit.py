@@ -48,6 +48,7 @@ from xsource.wiring import (
 
 _APP_LABEL = "xsource"
 
+_CLI_WATCHER_STATUS = "xsource watcher status"
 _CLI_REQUEST_LIST = "xsource request list"
 _CLI_BOOK_SEARCH = "xsource book search"
 _CLI_BOOK_IMPORT = "xsource book import"
@@ -76,6 +77,8 @@ _INVOICE_CAPTURE_BLAST = BlastRadius(
     summary="Records one supplier invoice in the xsource store and links it to supplier/request history. It does not pay money.",
     reversible="Invoice and price-history rows can be corrected by operator edit.",
 )
+
+_WATCHER_STATUS_BLAST = BlastRadius(summary="Writes nothing.", reversible="No write is performed.")
 
 _REQUEST_LIST_BLAST = BlastRadius(
     summary="Writes nothing.",
@@ -840,6 +843,37 @@ def watcher_status_rows(records: Sequence[Request]) -> list[str]:
     ]
 
 
+def _watcher_status_step(ctx: WizardContext, bag: dict) -> StepResult:
+    _suppliers, requests_, _invoices = build_stores(Config.from_env())
+    records = requests_.all()
+    rows = watcher_status_rows(records)
+    latest = max(
+        (
+            request.watcher["last_checked_at"]
+            for request in records
+            if request.status == "open" and request.watcher.get("last_checked_at")
+        ),
+        default="never",
+    )
+    return StepResult(
+        ok=True,
+        data={
+            "summary": f"{len(rows)} open request(s) watched · last check {latest}{_quarantine_suffix(requests_)}",
+            "rows": rows,
+        },
+    )
+
+
+_watcher_status_handler = make_walk_handler(
+    title="Reply watcher",
+    steps=[Step(label="Status", run=_watcher_status_step)],
+    blast_radius=_WATCHER_STATUS_BLAST,
+    preconditions_fn=_readonly_preconditions,
+    equivalent_cli=_CLI_WATCHER_STATUS,
+    total=2,
+)
+
+
 def _request_list_step(ctx: WizardContext, bag: dict) -> StepResult:
     _suppliers, requests_, _invoices = build_stores(Config.from_env())
     records = sorted(requests_.all(), key=lambda r: r.id)
@@ -1292,13 +1326,6 @@ def register_all() -> None:
             "xsource request sync",
         ),
         (
-            "watcher.status",
-            "E",
-            "Reply watcher",
-            "Show watched threads, reply parsing, and heartbeat status. Read-only via CLI: xsource watcher status.",
-            "xsource watcher status",
-        ),
-        (
             "partner.checkatrade",
             "D",
             "Checkatrade partner lead",
@@ -1316,6 +1343,18 @@ def register_all() -> None:
                 run=None,
             )
         )
+    register_capability(
+        CapabilitySpec(
+            key="watcher.status",
+            shelf="E",
+            title="Reply watcher",
+            summary="Show which open requests the reply watcher is checking and when it last checked each. Read-only.",
+            equivalent_cli=_CLI_WATCHER_STATUS,
+            run=_watcher_status_handler,
+            blast_radius=_WATCHER_STATUS_BLAST,
+            money_movement=False,
+        )
+    )
     register_capability(
         CapabilitySpec(
             key="doctor",
