@@ -223,7 +223,7 @@ uv run pytest -q
 
 ## Task 5: Full gates
 
-- [ ] Run each gate and paste the real output into `## HANDOFF NOTES`:
+- [x] Run each gate and paste the real output into `## HANDOFF NOTES`:
 
 ```
 uv run ruff check .
@@ -232,10 +232,10 @@ uv run mypy src
 uv run pytest -q
 ```
 
-- [ ] Confirm `tests/test_no_send_endpoints.py` passed within the full run (the draft-never-send
+- [x] Confirm `tests/test_no_send_endpoints.py` passed within the full run (the draft-never-send
       gate).
-- [ ] `git diff origin/main --stat` names only the files in the fence below.
-- [ ] Commit: `docs(plan): record gate results`
+- [x] `git diff origin/main --stat` names only the files in the fence below.
+- [x] Commit: `docs(plan): record gate results`
 
 ## Implementation fence
 
@@ -301,7 +301,7 @@ Operator-facing: yes. Office staff see a working Reply watcher card and three mo
 ## HANDOFF NOTES
 
 - Base commit: `5e8b6d3`.
-- Status: Tasks 1–4 complete; next run full gates and final review.
+- Status: all five tasks complete; ready for independent QA. Next: QA review this branch; operator merges.
 - Task 1: CLI characterisation passed unchanged (2 passed); helper test failed with the expected AttributeError; shared implementation passed both files (13 passed).
 - Pre-flight: Tasks 1 and 2 share ordered string rows; Task 3 reuses existing signal builders. No interface conflicts or dependencies.
 - Storage: verified approved external volume; environment and caches external, expected growth below 1 GiB. No diagnostic copies.
@@ -317,3 +317,16 @@ Operator-facing: yes. Office staff see a working Reply watcher card and three mo
 - Ruling: enabled signals say "emission enabled", replacing the planned "sent to the fleet". The flag proves configuration only; the existing emitter explicitly swallows delivery failures. Claiming delivery would mislead operators.
 
 - Task 4: operator guidance updated and reviewed against the implementation. Corrected prior claims about thread counts, backlog, heartbeat and the status command needing Gmail credentials. Existing store-loading cache/quarantine effects are documented; the new logic never upserts or emits.
+
+- Final review: fresh reviewer reported no findings. All changed files are inside the implementation fence.
+- Latest `origin/main` fetched; `git rebase origin/main`: `Current branch claude/plan-watcher-status-card is up to date.`
+- Gate results (24 September 2026):
+  - `uv run ruff check .` → `All checks passed!`
+  - `uv run ruff format --check .` → `159 files already formatted`
+  - `uv run mypy src` → `Success: no issues found in 62 source files`
+  - `uv run pytest -q` → `365 passed in 10.26s`
+  - `uv run pytest -q tests/test_no_send_endpoints.py` → `1 passed in 0.01s` (also included in full suite).
+  - `pre-commit run --all-files` (via `uv tool run --from pre-commit`) → `InvalidConfigError: .pre-commit-config.yaml is not a file`. Ruling: repository has no pre-commit configuration; its documented Ruff, mypy and pytest gates above are authoritative. No unrelated configuration added.
+- Storage receipt: environment 265 MiB; mypy cache 21 MiB; test scratch 1.3 MiB, all external. Internal free space remained 46 GiB. Rebuildable environment retained for QA, excluded from Time Machine; no diagnostic copies made.
+- RUNBOOK DELTA: shelf E → 3 now opens request check times; G adds Store records, Reply watcher and Pending signals. Investigate a stale watcher using its job/logs; amber signals count current work and emission enabled is not delivery confirmation. No new provisioning, credentials, commands or sign-offs.
+- OPERATOR TODO: none for implementation. Signal emission remains unchanged and defaults off.
