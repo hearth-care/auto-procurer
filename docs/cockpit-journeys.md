@@ -295,8 +295,12 @@ request has been checked within the last two hours. Check the watcher job and it
 this warning alone does not establish why checks have stopped.
 
 "Pending signals" counts items currently raised by the horizon scan, rather than a stored
-queue. Amber means there are items to review. The detail shows whether emission is enabled;
-it does not confirm delivery. These probes have no automatic fixes and do not emit signals.
+queue, using the records the Doctor has already loaded. Amber means there are items to review.
+The detail shows whether emission is enabled; it does not confirm delivery. If any part of the
+scan fails, the line turns red with "scan failed · count unavailable" rather than showing a
+count, so a zero always means the scan ran and found nothing. "Reply watcher" likewise shows
+red "check failed" if its staleness check cannot run. These probes have no automatic fixes and
+do not emit signals.
 
 **Target live path:** implemented by the [watcher status plan](superpowers/plans/2026-09-23-watcher-status-card.md).
 

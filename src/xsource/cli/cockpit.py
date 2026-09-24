@@ -36,8 +36,8 @@ from xsource.research.pipeline import RunCaps, run_research
 from xsource.research.triage import Triage, run_triage
 from xsource.secrets import secret_from_env
 from xsource.sheet.client import SheetClient
+from xsource.signals import build as signals_build
 from xsource.signals import emit as signals_emit
-from xsource.signals.build import build_watcher_health_signals, build_xsource_signals
 from xsource.store.models import Request
 from xsource.store.remote import StoreOffline, SyncedStore, get_offline_reason
 from xsource.wiring import (
@@ -1502,6 +1502,92 @@ def _utc_now() -> dt.datetime:
     return dt.datetime.now(dt.UTC)
 
 
+def _pending_signal_count(cfg: Config, suppliers, requests_, invoices, *, now: dt.datetime) -> int:
+    # Counts over the snapshot the Doctor already loaded instead of calling
+    # build_xsource_signals: that scan re-reads the stores and suppresses every failure into an
+    # empty result, which would show here as a healthy "0 raised". This mirrors the scan's
+    # builder list; tests/test_doctor_probes.py fails if a builder is added there but not here.
+    today = now.date()
+    request_records = requests_.all()
+    supplier_records = suppliers.all()
+    invoice_records = invoices.all()
+    store_offline = suppliers.offline or requests_.offline or invoices.offline
+    signals = (
+        *signals_build.build_chase_quote_signals(
+            request_records, today=today, now=now, chase_after_days=cfg.chase_after_days
+        ),
+        *signals_build.build_recurring_service_signals(
+            supplier_records, request_records, today=today, now=now
+        ),
+        *signals_build.build_watcher_health_signals(request_records, today=today, now=now),
+        *signals_build.build_store_offline_signals(
+            request_records, today=today, now=now, store_offline=store_offline
+        ),
+        *signals_build.build_payment_required_signals(
+            invoice_records, supplier_records, today=today, now=now
+        ),
+        *signals_build.build_invoice_variance_signals(
+            invoice_records, supplier_records, today=today, now=now
+        ),
+        *signals_build.build_rejected_invoice_signals(
+            invoice_records, supplier_records, today=today, now=now
+        ),
+    )
+    return len(signals)
+
+
+def _reply_watcher_probe(requests_, request_records: list[Request], now: dt.datetime) -> Probe:
+    if requests_ is None:
+        return Probe(name="Reply watcher", level="warn", detail="store unavailable", fix=None)
+    try:
+        stale = signals_build.build_watcher_health_signals(
+            request_records, today=now.date(), now=now
+        )
+    except Exception as exc:
+        return Probe(
+            name="Reply watcher",
+            level="error",
+            detail=f"check failed ({type(exc).__name__})",
+            fix=None,
+        )
+    if stale:
+        return Probe(name="Reply watcher", level="error", detail=stale[0].detail, fix=None)
+    open_requests = [request for request in request_records if request.status == "open"]
+    has_threads = any(
+        entry.outreach.get("thread_id") for request in open_requests for entry in request.shortlist
+    )
+    detail = (
+        f"fresh · {len(open_requests)} open request(s) watched"
+        if has_threads
+        else "no live outreach threads"
+    )
+    return Probe(name="Reply watcher", level="ok", detail=detail, fix=None)
+
+
+def _pending_signals_probe(cfg: Config, suppliers, requests_, invoices, now: dt.datetime) -> Probe:
+    if suppliers is None or requests_ is None or invoices is None:
+        return Probe(name="Pending signals", level="warn", detail="store unavailable", fix=None)
+    try:
+        count = _pending_signal_count(cfg, suppliers, requests_, invoices, now=now)
+    except Exception as exc:
+        # A failed scan must never pass for "nothing to follow up".
+        return Probe(
+            name="Pending signals",
+            level="error",
+            detail=f"scan failed ({type(exc).__name__}) · count unavailable",
+            fix=None,
+        )
+    emission = (
+        "emission enabled" if signals_emit._enabled() else "not sent (XSOURCE_EMIT_SIGNALS off)"
+    )
+    return Probe(
+        name="Pending signals",
+        level="warn" if count else "ok",
+        detail=f"{count} raised · {emission}",
+        fix=None,
+    )
+
+
 def doctor_build_probes(report: object) -> list[Probe]:
     cfg: Config = report["cfg"]  # type: ignore[index]
     suppliers = report["suppliers"]  # type: ignore[index]
@@ -1518,31 +1604,6 @@ def doctor_build_probes(report: object) -> list[Probe]:
         if stores_available
         else "store unavailable"
     )
-    watcher_signals = build_watcher_health_signals(request_records, today=now.date(), now=now)
-    open_requests = [request for request in request_records if request.status == "open"]
-    has_threads = any(
-        entry.outreach.get("thread_id") for request in open_requests for entry in request.shortlist
-    )
-    watcher_level = "ok"
-    if requests_ is None:
-        watcher_level, watcher_detail = "warn", "store unavailable"
-    elif watcher_signals:
-        watcher_level, watcher_detail = "error", watcher_signals[0].detail
-    else:
-        watcher_detail = (
-            f"fresh · {len(open_requests)} open request(s) watched"
-            if has_threads
-            else "no live outreach threads"
-        )
-    emission_detail = (
-        "emission enabled" if signals_emit._enabled() else "not sent (XSOURCE_EMIT_SIGNALS off)"
-    )
-    if stores_available:
-        signal_count = len(build_xsource_signals(today=now.date(), now=now))
-        pending_level = "warn" if signal_count else "ok"
-        pending_detail = f"{signal_count} raised · {emission_detail}"
-    else:
-        pending_level, pending_detail = "warn", "store unavailable"
     return [
         Probe(
             name="Google Maps key",
@@ -1597,13 +1658,8 @@ def doctor_build_probes(report: object) -> list[Probe]:
             detail=store_detail,
             fix=None,
         ),
-        Probe(name="Reply watcher", level=watcher_level, detail=watcher_detail, fix=None),
-        Probe(
-            name="Pending signals",
-            level=pending_level,
-            detail=pending_detail,
-            fix=None,
-        ),
+        _reply_watcher_probe(requests_, request_records, now),
+        _pending_signals_probe(cfg, suppliers, requests_, invoices, now),
     ]
 
 

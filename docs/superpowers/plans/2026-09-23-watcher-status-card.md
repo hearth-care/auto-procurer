@@ -369,3 +369,47 @@ Gate results (24 September 2026, after the fix):
 - `origin/main` fetched; no new commits since this branch's base — no rebase required.
 
 Status: fix round complete, ready for independent QA again.
+
+### QA fix round 2 (24 September 2026, fixer-claude-20260924T045701Z-21997-4)
+
+QA found that "Pending signals" still showed a green "0 raised" whenever the horizon scan
+failed after the Doctor's own store load had succeeded. The cause: `build_xsource_signals`
+runs `scan_xsource_horizon`, which re-reads the stores and wraps every builder in
+`contextlib.suppress(Exception)`, returning `()` on any failure. A caller cannot tell that
+apart from a successful empty scan, so no guard around the call could fix it.
+
+Decision: the Doctor now counts signals from the snapshot it has already loaded
+(`_pending_signal_count` in `src/xsource/cli/cockpit.py`), calling the same seven builders
+through the `xsource.signals.build` module with no suppression. Any exception turns the probe
+red: `scan failed (<ExceptionType>) · count unavailable`. This stays inside the implementation
+fence. The alternative, refactoring `scan_xsource_horizon` in `src/xsource/signals/build.py`
+to expose an unsuppressed composition, would have widened the fence and needed an arbiter.
+The cost of staying inside is a mirrored builder list; two tests guard it:
+`test_scan_outcomes_cover_every_signal_builder` discovers every `build_*_signals` function in
+the module, and the outcome matrix makes each one raise, so a builder added to the nightly scan
+but not to the Doctor fails CI. `test_pending_signals_count_matches_nightly_scan` checks the
+two counts agree on the same readable data.
+
+Deviation from the plan's Task 3 wording: the plan said the count is
+`len(build_xsource_signals(...))`. It is now the same builders over the Doctor's snapshot, for
+the reason above. The nightly scan's reload failures no longer reach the Doctor at all, since
+it no longer reloads (`test_pending_signals_ignores_nightly_scan_reload_failure`, QA's own
+regression, now shows `warn / 1 raised`).
+
+Symmetric twin: the "Reply watcher" probe also calls a builder
+(`build_watcher_health_signals`), and the framework does not catch exceptions from
+`doctor_build_probes`, so a failure there crashed the Doctor. It now shows red
+`check failed (<ExceptionType>)` (`test_reply_watcher_probe_check_failed`).
+
+Matrix: `tests/test_doctor_probes.py::test_pending_signals_probe_outcomes` drives the real
+Doctor frame across emission off/on × 13 scan outcomes (empty, nonempty, offline-but-readable,
+each of 3 stores missing, each of 7 builders raising) = 26 cells.
+
+Gate results (24 September 2026):
+- `uv run ruff check .` → `All checks passed!`
+- `uv run ruff format --check .` → `159 files already formatted`
+- `uv run mypy src` → `Success: no issues found in 62 source files`
+- `uv run pytest -q` → `392 passed in 23.78s`
+- `uv run pytest -q tests/test_no_send_endpoints.py` → `1 passed in 0.01s`
+
+Status: fix round 2 complete, ready for independent QA. Known failing tests: none.
