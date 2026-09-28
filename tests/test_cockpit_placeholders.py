@@ -26,7 +26,6 @@ _LIVE_MARKER = "Live"
 
 _PLACEHOLDER_STATUS_MARKERS = {
     "request.sync": _CLI_MARKER,
-    "watcher.status": _CLI_MARKER,
     "partner.checkatrade": _BUILD_ONLY_MARKER,
     "doctor": _LIVE_MARKER,
 }
@@ -67,24 +66,6 @@ def test_request_sync_card_summary_via_drive():
     cli = card.meta.get("equivalent_cli", "")
     assert cli.startswith("xsource"), (
         f"request.sync equivalent_cli does not start with 'xsource'; got: {cli!r}"
-    )
-
-
-def test_watcher_status_card_summary_via_drive():
-    """Drive into the watcher.status card and assert status wording in the model frame."""
-    host = cockpit._host(agent_mode=True)
-    # Shelf E: item 1 = request.outreach, item 2 = request.followup, item 3 = watcher.status
-    stream = CockpitDriver(host, keys=["E", "3", "q", "q"]).run()
-    cards = [m for m in stream if m.kind == "card"]
-    assert cards, "No card frame reached after driving to shelf E item 3"
-    card = cards[0]
-    summary = card.meta.get("summary", "")
-    assert _CLI_MARKER in summary, (
-        f"watcher.status card summary missing {_CLI_MARKER!r}; got: {summary!r}"
-    )
-    cli = card.meta.get("equivalent_cli", "")
-    assert cli.startswith("xsource"), (
-        f"watcher.status equivalent_cli does not start with 'xsource'; got: {cli!r}"
     )
 
 

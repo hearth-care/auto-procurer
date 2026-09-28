@@ -10,7 +10,7 @@ from typing import Any
 import typer
 
 from xsource.beat import write_heartbeat
-from xsource.cli.cockpit import _AnthropicStructuredGateway
+from xsource.cli.cockpit import _AnthropicStructuredGateway, watcher_status_rows
 from xsource.config import Config
 from xsource.obs import event as obs_event
 from xsource.obs import run_session
@@ -156,7 +156,7 @@ def run(
 def status() -> None:
     cfg = Config.from_env()
     _suppliers, requests, _invoices = build_stores(cfg)
-    open_requests = [request for request in requests.all() if request.status == "open"]
-    typer.echo(f"open_requests={len(open_requests)}")
-    for request in open_requests:
-        typer.echo(f"{request.id} last_checked={request.watcher.get('last_checked_at', '-')}")
+    rows = watcher_status_rows(requests.all())
+    typer.echo(f"open_requests={len(rows)}")
+    for row in rows:
+        typer.echo(row)
