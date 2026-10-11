@@ -186,7 +186,9 @@ def _doctor_row(report, monkeypatch, name):
     frame = next(frame for frame in stream if frame.kind == "doctor")
     rows = next(region.rows for region in frame.regions if region.role == "probes")
     row = next(row for row in rows if row.label == name)
-    return {field.label: field.value for field in row.fields}
+    # clonway-cockpit v0.4.0 adds probe_id and evidence_revision to every Doctor row;
+    # these tests compare only the level and detail a probe reports.
+    return {field.label: field.value for field in row.fields if field.label in {"level", "detail"}}
 
 
 def test_scan_outcomes_cover_every_signal_builder():
