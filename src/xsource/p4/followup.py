@@ -22,10 +22,10 @@ def build_followup_draft(
     summary = entry.reply.get("summary") or "your reply"
     body = "\n\n".join(
         [
-            f"Hello {supplier.name},",
-            f"Thanks for getting back to us about {request.raw_need}. I saw: {summary}",
-            "Could you let me know the next useful detail so we can decide how to proceed?",
-            f"Kind regards,\n{operator_name}",
+            "Hi there,",
+            f"Thanks for getting back to us about {request.raw_need}. You said: {summary}",
+            "Is there anything else we need to know before we go ahead?",
+            f"Cheers,\n{operator_name}",
             f"ref {request.id}",
         ]
     )

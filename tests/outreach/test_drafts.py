@@ -166,5 +166,5 @@ def test_procurement_stance_is_composed_with_shared_constitution():
     prompt = build_outreach_system_prompt()
 
     assert "Never fabricate numbers" in prompt
-    assert "brief, courteous, concrete" in prompt
-    assert "full address comes later" in prompt
+    assert "casual, friendly, British" in prompt
+    assert "never the full address" in prompt

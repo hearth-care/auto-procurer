@@ -55,10 +55,12 @@ def _draft_prompt(request: Request, supplier: Supplier) -> str:
             f"Request id: {request.id}",
             f"Supplier: {supplier.name}",
             f"Job summary: {job_summary}",
+            f"Job details (copy these facts exactly): {request.raw_need}",
             f"Town: {town}",
             f"Needed by: {needed_by}",
+            "Operator first name: Milo",
             "",
-            "Return only the email body. Include the request reference in the body footer.",
+            "Return only the email body. Put the request reference on the last line.",
         ]
     )
 
@@ -67,7 +69,7 @@ def build_quote_request(request: Request, supplier: Supplier, gateway=None) -> Q
     if not supplier.email:
         raise ValueError(f"supplier {supplier.id} has no email")
     job_summary, town, needed_by = _draft_context(request)
-    subject = f"Quote request: {job_summary}"
+    subject = f"Quote please: {job_summary}"
     if gateway is not None:
         result = gateway.complete_structured(
             [{"role": "user", "content": _draft_prompt(request, supplier)}],
@@ -77,14 +79,12 @@ def build_quote_request(request: Request, supplier: Supplier, gateway=None) -> Q
         return QuoteDraft(to=supplier.email, subject=subject, body=str(result["body"]).strip())
     body = "\n\n".join(
         [
-            f"Hello {supplier.name},",
-            (
-                "Could you quote for this job please: "
-                f"{job_summary}. It is in/near {town}, and we are looking for "
-                f"availability around {needed_by}."
-            ),
-            "Please let me know the likely price, what is included, and your earliest availability.",
-            "Kind regards,\nMilo",
+            "Hi there,",
+            f"We're a care home near {town} and we're after someone for a job.",
+            f"The job:\n{request.raw_need}\nNeeded: {needed_by}",
+            "Could you give us a rough price and say when you could fit it in? "
+            "Happy for you to pop round and have a look first.",
+            "Cheers,\nMilo",
             f"ref {request.id}",
         ]
     )
