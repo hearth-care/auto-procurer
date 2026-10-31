@@ -17,12 +17,16 @@ _STANCE_PATH = Path(__file__).with_name("stance.md")
 _DRAFT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["body"],
+    "required": ["subject", "body"],
     "properties": {
+        "subject": {
+            "type": "string",
+            "description": "Short, casual subject line of six words or fewer, no reference.",
+        },
         "body": {
             "type": "string",
             "description": "Plain-text supplier quote request body.",
-        }
+        },
     },
 }
 
@@ -60,7 +64,8 @@ def _draft_prompt(request: Request, supplier: Supplier) -> str:
             f"Needed by: {needed_by}",
             "Operator first name: Milo",
             "",
-            "Return only the email body. Put the request reference on the last line.",
+            "Return a short subject and the email body. Put the request reference on the "
+            "body's last line.",
         ]
     )
 
@@ -69,13 +74,17 @@ def build_quote_request(request: Request, supplier: Supplier, gateway=None) -> Q
     if not supplier.email:
         raise ValueError(f"supplier {supplier.id} has no email")
     job_summary, town, needed_by = _draft_context(request)
-    subject = f"Quote please: {job_summary}"
+    # Triage's job summary runs to a paragraph, so the fallback subject uses the trade.
+    subject = f"Quote please: {request.triage.get('category') or job_summary}"
     if gateway is not None:
         result = gateway.complete_structured(
             [{"role": "user", "content": _draft_prompt(request, supplier)}],
             _DRAFT_SCHEMA,
             role="outreach",
         )
+        written = str(result.get("subject") or "").strip()
+        if written and len(written) <= 80 and request.id not in written:
+            subject = written
         return QuoteDraft(to=supplier.email, subject=subject, body=str(result["body"]).strip())
     body = "\n\n".join(
         [

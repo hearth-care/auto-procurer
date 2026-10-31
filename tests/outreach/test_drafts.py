@@ -168,3 +168,25 @@ def test_procurement_stance_is_composed_with_shared_constitution():
     assert "Never fabricate numbers" in prompt
     assert "casual, friendly, British" in prompt
     assert "never the full address" in prompt
+
+
+def test_model_subject_is_used_unless_it_is_long_or_carries_the_reference():
+    supplier = Supplier(id="s-1", name="Sparks", email="info@example.com")
+    request = Request(
+        id="r-0042",
+        created_at="2026-06-10T15:58:00+01:00",
+        raw_need="EICR for the whole building",
+        triage={"category": "Electrician", "email_vars": {"job_summary": "x" * 200}},
+    )
+
+    class Gateway:
+        def __init__(self, subject):
+            self.subject = subject
+
+        def complete_structured(self, messages, schema, role="research"):
+            return {"subject": self.subject, "body": "Hi there\n\nref r-0042"}
+
+    assert build_quote_request(request, supplier, Gateway("EICR quote?")).subject == "EICR quote?"
+    for bad in ("EICR quote r-0042", "y" * 81, ""):
+        subject = build_quote_request(request, supplier, Gateway(bad)).subject
+        assert subject == "Quote please: Electrician"
