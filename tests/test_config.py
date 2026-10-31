@@ -33,7 +33,7 @@ def test_model_chain_defaults_to_sonnet(monkeypatch):
     monkeypatch.delenv("XSOURCE_MODEL_CHAIN", raising=False)
     monkeypatch.delenv("XSOURCE_RESEARCH_MODEL", raising=False)
     cfg = Config.from_env()
-    assert cfg.model_chain == ["claude-sonnet-4-6"]
+    assert cfg.model_chain == ["claude-sonnet-5-5"]
 
 
 def test_model_chain_from_env(monkeypatch):

@@ -29,7 +29,7 @@ from xsource.book.publish import DIRECTORY_TITLE, publish_directory
 from xsource.book.search import find_matches, format_supplier_row, search_suppliers
 from xsource.budget import Budget
 from xsource.cli.request import format_request_row
-from xsource.config import Config
+from xsource.config import DEFAULT_MODEL, Config
 from xsource.invoices.capture import validate_iso_date
 from xsource.research.candidates import Candidate
 from xsource.research.pipeline import RunCaps, run_research
@@ -326,12 +326,13 @@ class _AnthropicStructuredGateway:
             elif single:
                 self.model_chain = [single]
             else:
-                self.model_chain = ["claude-sonnet-4-6"]
+                self.model_chain = [DEFAULT_MODEL]
 
     def _call_model(self, model: str, messages, schema) -> dict:
         resp = self.client.messages.create(
             model=model,
-            max_tokens=1200,
+            max_tokens=16000,
+            system="Give your answer by calling the report tool exactly once.",
             tools=[
                 {
                     "name": "report",
@@ -339,7 +340,8 @@ class _AnthropicStructuredGateway:
                     "input_schema": schema,
                 }
             ],
-            tool_choice={"type": "tool", "name": "report"},
+            # Sonnet 5.5 rejects a forced tool_choice; the system line steers it instead.
+            tool_choice={"type": "auto"},
             messages=messages,
         )
         for block in resp.content:

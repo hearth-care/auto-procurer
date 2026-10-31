@@ -59,10 +59,10 @@ class AnthropicSearcher:
     def _extract_with_model(self, model: str, query: str, schema: dict) -> dict:
         resp = self.client.messages.create(
             model=model,
-            max_tokens=2000,
+            max_tokens=16000,
             system=_EXTRACT_INSTRUCTION,
             tools=[
-                {"type": "web_search_20250305", "name": "web_search", "max_uses": 3},
+                {"type": "web_search_20260209", "name": "web_search", "max_uses": 3},
                 {
                     "name": "report",
                     "description": "Report extracted directory candidates.",
