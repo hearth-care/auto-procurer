@@ -115,6 +115,7 @@ def test_trigger_walk_email_payload_creates_request(monkeypatch, tmp_path):
             "directory_fn": lambda *a, **k: [],
             "price_fn": lambda *a, **k: None,
             "ch_fn": lambda *a, **k: None,
+            "contact_fn": lambda *a, **k: None,
         },
     )
 

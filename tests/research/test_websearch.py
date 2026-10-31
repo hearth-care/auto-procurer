@@ -119,3 +119,28 @@ def test_searcher_no_fallback_on_non_retriable(monkeypatch):
         searcher.extract("query", {})
     assert calls == ["model-a"]
     assert "gateway.model_fallback" not in events
+
+
+class _ContactSearcher:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def find_contact(self, name, website):
+        return self.payload
+
+
+def test_website_email_is_kept_only_when_the_page_quote_contains_it():
+    from xsource.research.websearch import find_website_email
+
+    quoted = {
+        "email": "info@sparks.example",
+        "page_url": "https://sparks.example/contact",
+        "source_quote": "Email us at info@sparks.example for a quote",
+    }
+    assert find_website_email("Sparks", "sparks.example", _ContactSearcher(quoted)) == (
+        "info@sparks.example"
+    )
+    guessed = {**quoted, "source_quote": "Call us on 01822 000000"}
+    assert find_website_email("Sparks", "sparks.example", _ContactSearcher(guessed)) is None
+    none_found = {"email": None, "page_url": None, "source_quote": ""}
+    assert find_website_email("Sparks", "sparks.example", _ContactSearcher(none_found)) is None

@@ -77,6 +77,9 @@ def build_research_fns(cfg: Config):
         ),
         "price_fn": lambda term: pricesweep.sweep_prices(term, "Devon", searcher=searcher),
         "ch_fn": lambda name: company_check(name, api_key=ch_key) if ch_key else None,
+        "contact_fn": lambda name, website: websearch.find_website_email(
+            name, website, searcher=searcher
+        ),
     }
 
 

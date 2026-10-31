@@ -126,6 +126,7 @@ def test_cockpit_steps_call_triage_and_research_pipeline(monkeypatch):
             "directory_fn": lambda term, site: [],
             "price_fn": lambda term: None,
             "ch_fn": lambda name: None,
+            "contact_fn": lambda name, website: None,
         },
     )
     monkeypatch.setattr(cockpit, "run_research", fake_run_research)

@@ -62,6 +62,7 @@ def run_research(
     ch_fn,
     caps: RunCaps,
     shortlist_n: int,
+    contact_fn=None,
 ) -> ResearchResult:
     stages: dict[str, str] = {"black book": "ok"}
     candidates: list[Candidate] = list(book_matches)
@@ -105,4 +106,15 @@ def run_research(
         return None
 
     _stage(stages, "rank & dedupe", cross_check, None)
+
+    def contacts():
+        # Maps listings carry no email and outreach can only draft to an address, so each
+        # shortlisted firm's own website is read for the enquiry email it publishes.
+        for candidate in shortlist:
+            if candidate.email is None and candidate.website:
+                candidate.email = contact_fn(candidate.name, candidate.website)
+        return None
+
+    if contact_fn is not None:
+        _stage(stages, "contacts", contacts, None)
     return ResearchResult(shortlist=shortlist, indicative=indicative, stages=stages, caps=caps)

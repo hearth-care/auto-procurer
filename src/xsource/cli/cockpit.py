@@ -427,6 +427,7 @@ def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
         directory_fn=fns["directory_fn"],
         price_fn=fns["price_fn"],
         ch_fn=fns["ch_fn"],
+        contact_fn=fns["contact_fn"],
         caps=RunCaps(cfg.max_places_calls, cfg.max_web_searches),
         shortlist_n=cfg.shortlist_n,
     )
