@@ -5,12 +5,29 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+# Google Places business types for local trades; the Maps search is held to the chosen one
+# so a request for an electrician cannot come back as a well-reviewed plumber.
+PLACE_TYPES = [
+    "electrician",
+    "plumber",
+    "roofing_contractor",
+    "painter",
+    "locksmith",
+    "moving_company",
+    "general_contractor",
+]
+
 TRIAGE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "category": {"type": "string"},
         "search_terms": {"type": "array", "items": {"type": "string"}, "minItems": 1},
         "also_try": {"type": "array", "items": {"type": "string"}},
+        "place_type": {
+            "type": ["string", "null"],
+            "enum": [*PLACE_TYPES, None],
+            "description": "The Google Maps business type for this trade, or null if none fits.",
+        },
         "email_vars": {
             "type": "object",
             "properties": {
@@ -20,7 +37,7 @@ TRIAGE_SCHEMA: dict[str, Any] = {
             "required": ["job_summary", "location_town"],
         },
     },
-    "required": ["category", "search_terms", "also_try", "email_vars"],
+    "required": ["category", "search_terms", "also_try", "place_type", "email_vars"],
 }
 
 _SYSTEM = (
@@ -35,6 +52,7 @@ class Triage:
     search_terms: list[str]
     also_try: list[str]
     email_vars: dict[str, str]
+    place_type: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -42,6 +60,7 @@ class Triage:
             "search_terms": self.search_terms,
             "also_try": self.also_try,
             "email_vars": self.email_vars,
+            "place_type": self.place_type,
         }
 
 
@@ -61,6 +80,7 @@ def run_triage(raw_need: str, constraints: dict[str, Any], gateway) -> Triage:
             search_terms=[str(x) for x in out["search_terms"]],
             also_try=[str(x) for x in out.get("also_try", [])],
             email_vars={k: str(v) for k, v in out["email_vars"].items()},
+            place_type=out.get("place_type") if out.get("place_type") in PLACE_TYPES else None,
         )
     except (KeyError, TypeError) as exc:
         raise TriageError(f"triage output missing/invalid field: {exc}") from exc

@@ -8,6 +8,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+DEFAULT_MODEL = "claude-sonnet-5-5"
+
 
 def _int(name: str, default: int) -> int:
     return int(os.environ.get(name, default))
@@ -42,7 +44,7 @@ class Config:
         elif single:
             chain = [single]
         else:
-            chain = ["claude-sonnet-4-6"]
+            chain = [DEFAULT_MODEL]
         return cls(
             home_postcode=os.environ.get("XSOURCE_HOME_POSTCODE") or None,
             default_radius_miles=_int("XSOURCE_DEFAULT_RADIUS_MILES", 15),

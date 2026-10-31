@@ -29,7 +29,7 @@ from xsource.book.publish import DIRECTORY_TITLE, publish_directory
 from xsource.book.search import find_matches, format_supplier_row, search_suppliers
 from xsource.budget import Budget
 from xsource.cli.request import format_request_row
-from xsource.config import Config
+from xsource.config import DEFAULT_MODEL, Config
 from xsource.invoices.capture import validate_iso_date
 from xsource.research.candidates import Candidate
 from xsource.research.pipeline import RunCaps, run_research
@@ -326,12 +326,17 @@ class _AnthropicStructuredGateway:
             elif single:
                 self.model_chain = [single]
             else:
-                self.model_chain = ["claude-sonnet-4-6"]
+                self.model_chain = [DEFAULT_MODEL]
 
     def _call_model(self, model: str, messages, schema) -> dict:
+        # Callers lead with a role="system" message; the API only takes the opening system
+        # prompt as the top-level parameter.
+        system = [m["content"] for m in messages if m["role"] == "system"]
+        system.append("Give your answer by calling the report tool exactly once.")
         resp = self.client.messages.create(
             model=model,
-            max_tokens=1200,
+            max_tokens=16000,
+            system="\n\n".join(system),
             tools=[
                 {
                     "name": "report",
@@ -339,8 +344,9 @@ class _AnthropicStructuredGateway:
                     "input_schema": schema,
                 }
             ],
-            tool_choice={"type": "tool", "name": "report"},
-            messages=messages,
+            # Sonnet 5.5 rejects a forced tool_choice; the system line steers it instead.
+            tool_choice={"type": "auto"},
+            messages=[m for m in messages if m["role"] != "system"],
         )
         for block in resp.content:
             block_any = cast(Any, block)
@@ -390,6 +396,7 @@ def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
         search_terms=list(triage_dict["search_terms"]),
         also_try=list(triage_dict.get("also_try", [])),
         email_vars=dict(triage_dict["email_vars"]),
+        place_type=triage_dict.get("place_type"),
     )
     book_suppliers = find_matches(
         suppliers.all(),
@@ -417,10 +424,11 @@ def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
     result = run_research(
         triage=triage,
         book_matches=book_matches,
-        places_fn=fns["places_fn"],
+        places_fn=lambda term: fns["places_fn"](term, place_type=triage.place_type),
         directory_fn=fns["directory_fn"],
         price_fn=fns["price_fn"],
         ch_fn=fns["ch_fn"],
+        contact_fn=fns["contact_fn"],
         caps=RunCaps(cfg.max_places_calls, cfg.max_web_searches),
         shortlist_n=cfg.shortlist_n,
     )
@@ -859,11 +867,10 @@ def _watcher_status_step(ctx: WizardContext, bag: dict) -> StepResult:
     summary = (
         f"{len(rows)} open request(s) watched · last check {latest}{_quarantine_suffix(requests_)}"
     )
-    message = summary if not rows else summary + "\n" + "\n".join(rows)
     return StepResult(
         ok=True,
         data={
-            "summary": message,
+            "summary": _with_rows(summary, rows),
             "rows": rows,
         },
     )
@@ -879,19 +886,20 @@ _watcher_status_handler = make_walk_handler(
 )
 
 
+def _with_rows(summary: str, rows: list[str]) -> str:
+    # The framework's walk result carries only the summary text, so the rows ride inside it
+    # (hearth-care/Auto-Procurer#33).
+    return summary if not rows else summary + "\n" + "\n".join(rows)
+
+
 def _request_list_step(ctx: WizardContext, bag: dict) -> StepResult:
     _suppliers, requests_, _invoices = build_stores(Config.from_env())
     records = sorted(requests_.all(), key=lambda r: r.id)
     open_n = sum(1 for request in records if request.status == "open")
     total_n = len(records)
     rows = [format_request_row(request) for request in records]
-    return StepResult(
-        ok=True,
-        data={
-            "summary": f"{open_n} open · {total_n} total{_quarantine_suffix(requests_)}",
-            "rows": rows,
-        },
-    )
+    summary = f"{open_n} open · {total_n} total{_quarantine_suffix(requests_)}"
+    return StepResult(ok=True, data={"summary": _with_rows(summary, rows), "rows": rows})
 
 
 def _book_search_term_step(ctx: WizardContext, bag: dict) -> StepResult:
@@ -906,13 +914,8 @@ def _book_search_results_step(ctx: WizardContext, bag: dict) -> StepResult:
     term = bag["term"]
     matches = search_suppliers(suppliers.all(), term)
     rows = [format_supplier_row(supplier) for supplier in matches]
-    return StepResult(
-        ok=True,
-        data={
-            "summary": f"{len(matches)} match(es) for '{term}'{_quarantine_suffix(suppliers)}",
-            "rows": rows,
-        },
-    )
+    summary = f"{len(matches)} match(es) for '{term}'{_quarantine_suffix(suppliers)}"
+    return StepResult(ok=True, data={"summary": _with_rows(summary, rows), "rows": rows})
 
 
 _request_list_handler = make_walk_handler(

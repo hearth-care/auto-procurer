@@ -131,7 +131,7 @@ shelf (G) at cockpit start.
 | `XSOURCE_MONTHLY_BUDGET_GBP` | no | `10` | Research allowed up to £10/month |
 | `XSOURCE_DEFAULT_RADIUS_MILES` | no | `15` | Supplier search radius |
 | `XSOURCE_CHASE_AFTER_DAYS` | no | `3` | Days before a chase signal fires |
-| `XSOURCE_MODEL_CHAIN` | no | `claude-sonnet-4-6` | Comma-separated model fallback chain |
+| `XSOURCE_MODEL_CHAIN` | no | `claude-sonnet-5-5` | Comma-separated model fallback chain |
 | `XSOURCE_STATE_PREFIX` | no | `state/xsource` | GCS prefix for state objects |
 | `XSOURCE_DRIVE_FOLDER_ID` | no | — | Google Drive folder for published shortlists |
 | `XSOURCE_STAFF_SHARE_GROUP` | no | — | Google Group address to share published sheets with |

@@ -99,3 +99,30 @@ def test_auth_error_does_not_fall_back(monkeypatch):
     # Auth error is not retriable — must stop at model-a
     assert calls == ["model-a"]
     assert "gateway.model_fallback" not in events
+
+
+def test_call_model_sends_system_prompt_top_level_without_forcing_the_tool():
+    # The API 400s on a role="system" first message and, on Sonnet 5.5, on a forced
+    # tool_choice; both reached production unnoticed because no test saw the request.
+    from types import SimpleNamespace
+
+    from xsource.cli.cockpit import _AnthropicStructuredGateway
+
+    sent = {}
+
+    def create(**kwargs):
+        sent.update(kwargs)
+        block = SimpleNamespace(type="tool_use", name="report", input={"ok": True})
+        return SimpleNamespace(content=[block])
+
+    gw = object.__new__(_AnthropicStructuredGateway)
+    gw.client = SimpleNamespace(messages=SimpleNamespace(create=create))
+    out = gw._call_model(
+        "claude-sonnet-5-5",
+        [{"role": "system", "content": "Triage rules."}, {"role": "user", "content": "Need"}],
+        {"type": "object"},
+    )
+    assert out == {"ok": True}
+    assert [m["role"] for m in sent["messages"]] == ["user"]
+    assert sent["system"].startswith("Triage rules.")
+    assert sent["tool_choice"] == {"type": "auto"}

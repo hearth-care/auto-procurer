@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 from clonway_cockpit.walk import WizardContext
 from rich.console import Console
@@ -77,7 +78,7 @@ def test_request_list_step_summary_and_rows(monkeypatch, tmp_path):
     monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (object(), store, object()))
     result = cockpit_mod._request_list_step(_ctx([]), {})
     assert result.ok is True
-    assert result.data["summary"] == "1 open · 2 total"
+    assert result.data["summary"].splitlines()[0] == "1 open · 2 total"
 
 
 def test_request_list_empty_store_summary(monkeypatch, tmp_path):
@@ -102,7 +103,10 @@ def test_request_list_walk_surfaces_quarantine(monkeypatch, tmp_path):
     store = JsonlStore(path, Request)
     monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (object(), store, object()))
     result = cockpit_mod._request_list_step(_ctx([]), {})
-    assert result.data["summary"] == "1 open · 1 total · quarantined: 1 corrupt line(s)"
+    assert (
+        result.data["summary"].splitlines()[0]
+        == "1 open · 1 total · quarantined: 1 corrupt line(s)"
+    )
 
 
 def test_readonly_preconditions_allow_offline_cache(monkeypatch):
@@ -129,7 +133,10 @@ def test_search_walk_surfaces_quarantine(monkeypatch, tmp_path):
     store = JsonlStore(path, Supplier)
     monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (store, object(), object()))
     result = cockpit_mod._book_search_results_step(_ctx([]), {"term": "alpha"})
-    assert result.data["summary"] == "1 match(es) for 'alpha' · quarantined: 1 corrupt line(s)"
+    assert (
+        result.data["summary"].splitlines()[0]
+        == "1 match(es) for 'alpha' · quarantined: 1 corrupt line(s)"
+    )
 
 
 def test_search_walk_no_matches(monkeypatch, tmp_path):
@@ -190,7 +197,35 @@ def test_request_list_walk_result_via_drive(monkeypatch, tmp_path):
     stream = CockpitDriver(host, keys=["B", "2", "y"]).run()
     results = [m for m in stream if m.kind == "walk.result"]
     assert results and results[0].meta["ok"] is True
-    assert results[0].meta["message"] == "1 open · 2 total"
+    lines = results[0].meta["message"].splitlines()
+    assert lines[0] == "1 open · 2 total"
+    assert [line.split()[0] for line in lines[1:]] == ["r-0001", "r-0002"]
+    assert results[0].regions[0].text == results[0].meta["message"]
+
+
+def test_book_search_walk_result_via_drive(monkeypatch, tmp_path):
+    from clonway_cockpit.agent import CockpitDriver
+
+    from xsource.cli import cockpit as cockpit_mod
+
+    monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
+    suppliers = JsonlStore(tmp_path / "suppliers.jsonl", Supplier)
+    suppliers.upsert(_alpha_supplier())
+    stores = (
+        _online(suppliers),
+        _online(JsonlStore(tmp_path / "requests.jsonl", Request)),
+        _online(JsonlStore(tmp_path / "invoices.jsonl", InvoiceRecord)),
+    )
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: stores)
+    host = replace(
+        cockpit_mod._host(agent_mode=True), agent_input_fn=lambda _prompt, _default="": "alpha"
+    )
+    stream = CockpitDriver(host, keys=["C", "1", "y"]).run()
+    results = [m for m in stream if m.kind == "walk.result"]
+    assert results and results[0].meta["ok"] is True
+    lines = results[0].meta["message"].splitlines()
+    assert lines[0] == "1 match(es) for 'alpha'"
+    assert "Alpha Tree Care" in lines[1]
 
 
 def _watcher_requests(tmp_path):

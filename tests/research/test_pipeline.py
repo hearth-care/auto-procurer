@@ -111,3 +111,46 @@ def test_book_matches_rank_first():
         shortlist_n=5,
     )
     assert result.shortlist[0].name == "Old Friend"
+
+
+def test_contacts_stage_fills_missing_emails_from_websites():
+    from xsource.research.candidates import Candidate
+    from xsource.research.pipeline import RunCaps, run_research
+    from xsource.research.triage import Triage
+
+    looked_up = []
+
+    def contact_fn(name, website):
+        looked_up.append(website)
+        return f"hello@{website}"
+
+    places = [
+        Candidate(
+            name="Has Site",
+            source="places",
+            website="hassite.example",
+            rating=5,
+            review_count=10,
+            rating_scale=5,
+        ),
+        Candidate(name="No Site", source="places", rating=4, review_count=3, rating_scale=5),
+    ]
+    result = run_research(
+        triage=Triage(
+            category="electrician", search_terms=["electrician"], also_try=[], email_vars={}
+        ),
+        book_matches=[],
+        places_fn=lambda term: places,
+        directory_fn=lambda term, site: [],
+        price_fn=lambda term: None,
+        ch_fn=lambda name: None,
+        caps=RunCaps(1, 0),
+        shortlist_n=5,
+        contact_fn=contact_fn,
+    )
+    assert looked_up == ["hassite.example"]
+    assert {c.name: c.email for c in result.shortlist} == {
+        "Has Site": "hello@hassite.example",
+        "No Site": None,
+    }
+    assert result.stages["contacts"] == "ok"

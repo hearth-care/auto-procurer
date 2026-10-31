@@ -51,7 +51,9 @@ class SafeOutreachClient:
             html = "".join(f"<p>{line}</p>" for line in body.split("\n\n") if line.strip())
             mime.attach(MIMEText(f"<html><body>{html}</body></html>", "html", _charset="utf-8"))
             raw = base64.urlsafe_b64encode(mime.as_bytes()).decode("ascii")
-            payload = {"message": {"raw": raw, "labelIds": [label]}}
+            # Gmail refuses labelIds on drafts ("Cannot set labels on drafts"); the label is
+            # kept in xsource's own provenance record by the caller instead.
+            payload = {"message": {"raw": raw}}
             created = (
                 self.__service.users()
                 .drafts()

@@ -77,10 +77,13 @@ def build_research_fns(cfg: Config):
         ),
         "price_fn": lambda term: pricesweep.sweep_prices(term, "Devon", searcher=searcher),
         "ch_fn": lambda name: company_check(name, api_key=ch_key) if ch_key else None,
+        "contact_fn": lambda name, website: websearch.find_website_email(
+            name, website, searcher=searcher
+        ),
     }
 
 
-def _places(cfg: Config, key: str, term: str):
+def _places(cfg: Config, key: str, term: str, place_type: str | None = None):
     return places.search_places(
-        term, cfg.home_postcode or "", cfg.default_radius_miles, api_key=key
+        term, cfg.home_postcode or "", cfg.default_radius_miles, api_key=key, place_type=place_type
     )
