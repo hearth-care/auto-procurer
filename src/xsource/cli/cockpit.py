@@ -329,10 +329,14 @@ class _AnthropicStructuredGateway:
                 self.model_chain = [DEFAULT_MODEL]
 
     def _call_model(self, model: str, messages, schema) -> dict:
+        # Callers lead with a role="system" message; the API only takes the opening system
+        # prompt as the top-level parameter.
+        system = [m["content"] for m in messages if m["role"] == "system"]
+        system.append("Give your answer by calling the report tool exactly once.")
         resp = self.client.messages.create(
             model=model,
             max_tokens=16000,
-            system="Give your answer by calling the report tool exactly once.",
+            system="\n\n".join(system),
             tools=[
                 {
                     "name": "report",
@@ -342,7 +346,7 @@ class _AnthropicStructuredGateway:
             ],
             # Sonnet 5.5 rejects a forced tool_choice; the system line steers it instead.
             tool_choice={"type": "auto"},
-            messages=messages,
+            messages=[m for m in messages if m["role"] != "system"],
         )
         for block in resp.content:
             block_any = cast(Any, block)
