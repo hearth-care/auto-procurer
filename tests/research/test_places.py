@@ -78,3 +78,17 @@ def test_firms_beyond_the_radius_are_dropped():
     cands = search_places("electrician", "TQ12 4QQ", 15, "KEY", post_fn=post, geocode_fn=_home)
     assert [c.name for c in cands] == ["Near"]
     assert cands[0].extra == {"miles": 3.5}
+
+
+def test_trade_type_is_enforced_when_triage_names_one():
+    sent = []
+
+    def post(url, headers, json_body):
+        sent.append(json_body)
+        return {"places": []}
+
+    search_places(
+        "EICR", "TQ12 4QQ", 15, "KEY", post_fn=post, geocode_fn=_home, place_type="electrician"
+    )
+    assert sent[0]["includedType"] == "electrician"
+    assert sent[0]["strictTypeFiltering"] is True

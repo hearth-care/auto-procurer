@@ -396,6 +396,7 @@ def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
         search_terms=list(triage_dict["search_terms"]),
         also_try=list(triage_dict.get("also_try", [])),
         email_vars=dict(triage_dict["email_vars"]),
+        place_type=triage_dict.get("place_type"),
     )
     book_suppliers = find_matches(
         suppliers.all(),
@@ -423,7 +424,7 @@ def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
     result = run_research(
         triage=triage,
         book_matches=book_matches,
-        places_fn=fns["places_fn"],
+        places_fn=lambda term: fns["places_fn"](term, place_type=triage.place_type),
         directory_fn=fns["directory_fn"],
         price_fn=fns["price_fn"],
         ch_fn=fns["ch_fn"],

@@ -77,12 +77,15 @@ def search_places(
     api_key: str,
     post_fn=real_post,
     geocode_fn=real_geocode,
+    place_type: str | None = None,
 ) -> list[Candidate]:
     # A text query alone lets Google return firms 100 miles away, so the search is
     # restricted to a box around home and the box corners are trimmed back to the radius.
     home = geocode_fn(home_postcode)
     headers = {"X-Goog-Api-Key": api_key, "X-Goog-FieldMask": _FIELD_MASK}
-    body = {"textQuery": term, "locationRestriction": _radius_box(home, radius_miles)}
+    body: dict = {"textQuery": term, "locationRestriction": _radius_box(home, radius_miles)}
+    if place_type:
+        body |= {"includedType": place_type, "strictTypeFiltering": True}
     data = post_fn(_URL, headers, body)
     out: list[Candidate] = []
     for place in data.get("places", []):

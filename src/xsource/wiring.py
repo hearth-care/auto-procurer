@@ -83,7 +83,7 @@ def build_research_fns(cfg: Config):
     }
 
 
-def _places(cfg: Config, key: str, term: str):
+def _places(cfg: Config, key: str, term: str, place_type: str | None = None):
     return places.search_places(
-        term, cfg.home_postcode or "", cfg.default_radius_miles, api_key=key
+        term, cfg.home_postcode or "", cfg.default_radius_miles, api_key=key, place_type=place_type
     )
