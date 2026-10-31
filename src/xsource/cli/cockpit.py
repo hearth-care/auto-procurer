@@ -861,11 +861,10 @@ def _watcher_status_step(ctx: WizardContext, bag: dict) -> StepResult:
     summary = (
         f"{len(rows)} open request(s) watched · last check {latest}{_quarantine_suffix(requests_)}"
     )
-    message = summary if not rows else summary + "\n" + "\n".join(rows)
     return StepResult(
         ok=True,
         data={
-            "summary": message,
+            "summary": _with_rows(summary, rows),
             "rows": rows,
         },
     )
@@ -881,19 +880,20 @@ _watcher_status_handler = make_walk_handler(
 )
 
 
+def _with_rows(summary: str, rows: list[str]) -> str:
+    # The framework's walk result carries only the summary text, so the rows ride inside it
+    # (hearth-care/Auto-Procurer#33).
+    return summary if not rows else summary + "\n" + "\n".join(rows)
+
+
 def _request_list_step(ctx: WizardContext, bag: dict) -> StepResult:
     _suppliers, requests_, _invoices = build_stores(Config.from_env())
     records = sorted(requests_.all(), key=lambda r: r.id)
     open_n = sum(1 for request in records if request.status == "open")
     total_n = len(records)
     rows = [format_request_row(request) for request in records]
-    return StepResult(
-        ok=True,
-        data={
-            "summary": f"{open_n} open · {total_n} total{_quarantine_suffix(requests_)}",
-            "rows": rows,
-        },
-    )
+    summary = f"{open_n} open · {total_n} total{_quarantine_suffix(requests_)}"
+    return StepResult(ok=True, data={"summary": _with_rows(summary, rows), "rows": rows})
 
 
 def _book_search_term_step(ctx: WizardContext, bag: dict) -> StepResult:
@@ -908,13 +908,8 @@ def _book_search_results_step(ctx: WizardContext, bag: dict) -> StepResult:
     term = bag["term"]
     matches = search_suppliers(suppliers.all(), term)
     rows = [format_supplier_row(supplier) for supplier in matches]
-    return StepResult(
-        ok=True,
-        data={
-            "summary": f"{len(matches)} match(es) for '{term}'{_quarantine_suffix(suppliers)}",
-            "rows": rows,
-        },
-    )
+    summary = f"{len(matches)} match(es) for '{term}'{_quarantine_suffix(suppliers)}"
+    return StepResult(ok=True, data={"summary": _with_rows(summary, rows), "rows": rows})
 
 
 _request_list_handler = make_walk_handler(
