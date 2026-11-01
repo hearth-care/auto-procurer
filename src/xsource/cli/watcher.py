@@ -100,17 +100,22 @@ def _process_factory(cfg: Config):
                 detail="store offline at cycle start; skipping message processing",
             )
             raise StoreOffline("store is offline — skipping watcher cycle")
-        report = process_once(
-            requests=requests,
-            suppliers=suppliers,
-            gmail=gmail,
-            redraw_fn=redraw_fn,
-            gateway=gateway,
-            state=state,
-            now=dt.datetime.now(dt.UTC),
-        )
-        state_sync.upload()
-        return report
+        # A failed redraw raises after replies are applied and their messages marked
+        # processed; the state must still go up, or the next hourly --once run (a fresh
+        # container) re-parses and re-applies the same mail. redraw_pending stays set on
+        # the stored requests, so that run retries the redraw.
+        try:
+            return process_once(
+                requests=requests,
+                suppliers=suppliers,
+                gmail=gmail,
+                redraw_fn=redraw_fn,
+                gateway=gateway,
+                state=state,
+                now=dt.datetime.now(dt.UTC),
+            )
+        finally:
+            state_sync.upload()
 
     return _run_once
 
