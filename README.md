@@ -129,12 +129,19 @@ back into the store before each redraw, so those edits are kept.
 
 - `xsource workbook init` creates the workbook (in `XSOURCE_DRIVE_FOLDER_ID` if set)
   and prints `export XSOURCE_WORKBOOK_ID=...` for the operator to set.
-- `xsource workbook redraw` redraws every tab from the store.
+- `xsource workbook redraw` redraws every tab from the store. It also sets the
+  workbook's locale to `en_GB` and time zone to Europe/London, so a workbook made
+  before `init` did this reads its dates as day/month/year.
 - `xsource workbook migrate` lists the open requests that still have their own
   old Sheet; `--apply` moves each into a job tab in the workbook, then redraws.
 - When `XSOURCE_WORKBOOK_ID` is set, `xsource request sync-all` reads back the
   hand edits and redraws, and the reply watcher redraws after it records a reply.
-  Without it, the commands behave as before.
+
+Once this version is deployed, the reply watcher no longer updates the old
+per-request Sheets in any case, with or without `XSOURCE_WORKBOOK_ID`: they stop
+showing new sends and replies and stay as read-only history. Set
+`XSOURCE_WORKBOOK_ID` before or with the deploy, so sends and replies show in the
+workbook from the first watcher run.
 
 ## Configuration
 
