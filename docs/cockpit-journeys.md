@@ -84,9 +84,15 @@ for the re-tender branch.
 
 ---
 
-## Journey 2 — Requests (shelf B)
+## Journey 2 — Board and requests (shelf B)
 
-**Entry point:** shelf `B` → `request.list`, `request.sync`
+**Entry point:** shelf `B` → `board` (B1), `invoice.capture` (B2), `request.list` (B3), `request.sync` (B4)
+
+### 2.0 · `board` — implemented (read-only)
+
+Open jobs: stage, quotes in, best price, who each is waiting on. Code path:
+`_board_handler` → `_board_step`. No CLI twin; the workbook's Board tab shows the same
+information. **Mutation risk:** read-only.
 
 ### 2a · `request.list` — implemented (read-only)
 

@@ -11,7 +11,7 @@
 `register_all()` in `src/xsource/cli/cockpit.py` (~L947–1007) still registers four
 capabilities with `run=None` and summary "Planned — not yet wired.":
 
-- `request.list` (shelf B, item 2)
+- `request.list` (shelf B, item 3)
 - `book.search` (shelf C, item 1)
 - `book.import` (shelf C, item 2)
 - `book.publish` (shelf D, item 1)

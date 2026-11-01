@@ -1,6 +1,6 @@
 # Gareth: a procurement colleague in Google Chat and the cockpit
 
-Date: 1 November 2026. Status: draft for the operator's approval.
+Date: 1 November 2026. Status: stage 1 implemented on the `claude/gareth-design` branch (1 November 2026); later stages still draft.
 
 ## Why
 
@@ -92,8 +92,8 @@ mock-up is corrected in the same change.
 ### 1. Name and voice
 
 The persona is Gareth (`config/personas/gareth.toml` and `config/souls/gareth.md`, following
-the framework's persona layout). Outreach drafts are signed "Gareth" instead of the current
-default "Milo" (`XSOURCE_OPERATOR_DISPLAY_NAME`). Gareth gets his own mailbox, a `gareth@` alias
+the framework's persona layout). Outreach drafts are signed with `XSOURCE_OPERATOR_DISPLAY_NAME` (default Gareth); the From name and address come from
+`XSOURCE_MAILBOX_DISPLAY_NAME` and `XSOURCE_MAILBOX_ADDRESS`. Gareth gets his own mailbox, a `gareth@` alias
 on the company domain that the operator sets up; drafts are created there and replies come back
 there. [ASSUMPTION: the alias name; the operator to confirm.]
 

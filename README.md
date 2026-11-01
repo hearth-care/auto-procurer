@@ -29,7 +29,7 @@ xsource signals scan          # build and emit forward-item Signals
 xsource watcher run           # poll Gmail for supplier replies (loop)
 xsource watcher status        # open requests and when the watcher last checked each
 xsource request sync          # sync a single request record from the Sheet
-xsource request sync-all      # sync all open request records
+xsource request sync-all      # sync all open request records; redraws the workbook if one is set
 xsource request trigger       # parse an email/chat trigger and show extraction
 xsource request followup      # draft a follow-up reply for a supplier response
 xsource request reorder       # open a prefilled reorder review for a recurring supplier
@@ -43,6 +43,9 @@ xsource invoice list          # list captured invoices
 xsource invoice reemit        # correct a rejected invoice and re-emit it
 xsource invoice write-off     # mark a rejected invoice written off
 xsource invoice sync-acks     # ingest payment-required acknowledgements
+xsource workbook init         # create the lasting workbook and print its id
+xsource workbook redraw       # redraw every tab of the workbook from the store
+xsource workbook migrate [--apply]  # list, or with --apply move, open requests into the workbook
 ```
 
 `xsource` bare on a TTY opens the cockpit. `xsource --agent-stdio` serves it
@@ -56,9 +59,9 @@ following shelves:
 | Shelf | Label | What it does |
 |-------|-------|--------------|
 | A | New request | Research and shortlist suppliers for a new procurement need |
-| B | Requests | Browse and manage open requests |
+| B | Board, requests | The Board of open jobs (stage, quotes in, best price, who it is waiting on), invoice capture, and the request list |
 | C | Black book | Search the supplier database |
-| D | Publish | Publish a shortlist to Google Sheets and share with staff |
+| D | Publish | Publish the staff supplier directory to Google Sheets and share with staff |
 | E | Outreach | Draft Gmail outreach to shortlisted suppliers (never sends) |
 | G | Diagnostics & setup | Doctor probes: config, credentials, store, budget, store record counts, reply watcher, pending signals |
 
@@ -114,6 +117,25 @@ for rollback only; do not use it for steady-state production scheduling.
 Use `scripts/cutover_launchd.py` to archive, unload, or restore legacy launchd
 jobs.
 
+## The workbook
+
+xsource keeps one lasting Google Sheets workbook rather than a new Sheet per
+request. Its tabs are Board (one row per open job), Black book (the supplier
+directory), Log (what the worker did and when), and one tab per job holding that
+job's shortlist and quotes. The store is the record and the workbook is redrawn
+from it, so a redraw never writes a value the store does not already hold. The
+columns staff are meant to edit by hand (for example quotes and notes) are read
+back into the store before each redraw, so those edits are kept.
+
+- `xsource workbook init` creates the workbook (in `XSOURCE_DRIVE_FOLDER_ID` if set)
+  and prints `export XSOURCE_WORKBOOK_ID=...` for the operator to set.
+- `xsource workbook redraw` redraws every tab from the store.
+- `xsource workbook migrate` lists the open requests that still have their own
+  old Sheet; `--apply` moves each into a job tab in the workbook, then redraws.
+- When `XSOURCE_WORKBOOK_ID` is set, `xsource request sync-all` reads back the
+  hand edits and redraws, and the reply watcher redraws after it records a reply.
+  Without it, the commands behave as before.
+
 ## Configuration
 
 All knobs are environment variables. Required values are checked by the Doctor
@@ -133,7 +155,8 @@ shelf (G) at cockpit start.
 | `XSOURCE_CHASE_AFTER_DAYS` | no | `3` | Days before a chase signal fires |
 | `XSOURCE_MODEL_CHAIN` | no | `claude-sonnet-5-5` | Comma-separated model fallback chain |
 | `XSOURCE_STATE_PREFIX` | no | `state/xsource` | GCS prefix for state objects |
-| `XSOURCE_DRIVE_FOLDER_ID` | no | — | Google Drive folder for published shortlists |
+| `XSOURCE_DRIVE_FOLDER_ID` | no | — | Google Drive folder for the workbook and published directories |
+| `XSOURCE_WORKBOOK_ID` | no | — | Lasting workbook id from `xsource workbook init`; unset means no redraw and workbook commands refuse to run |
 | `XSOURCE_STAFF_SHARE_GROUP` | no | — | Google Group address to share published sheets with |
 | `XSOURCE_STATE_DIR` | no | `~/.claude-inbox/xsource/state` | Local state directory (hydrated from GCS in Cloud Run) |
 | `XSOURCE_SHORTLIST_N` | no | `5` | Shortlist size per request |
