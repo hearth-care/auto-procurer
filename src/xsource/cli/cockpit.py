@@ -43,6 +43,8 @@ from xsource.store.remote import StoreOffline, SyncedStore, get_offline_reason
 from xsource.wiring import (
     build_budget,
     build_directory_state_file,
+    build_drawn_state_file,
+    build_log_store,
     build_research_fns,
     build_stores,
 )
@@ -67,8 +69,8 @@ _SHELVES: dict[str, str] = {
 }
 
 _REQUEST_NEW_BLAST = BlastRadius(
-    summary="Creates one Google Sheet and saves the request and its suppliers. Does not send or draft any email.",
-    reversible="Sheet can be deleted; store records can be removed by id.",
+    summary="Adds one job tab to the workbook and saves the request and its firms. Does not send or draft any email.",
+    reversible="The tab can be deleted; store records can be removed by id.",
 )
 
 _REQUEST_OUTREACH_BLAST = BlastRadius(
@@ -261,6 +263,13 @@ def _preconditions(ctx: WizardContext) -> list[Precondition]:
         ),
         Precondition("Research budget", budget.allow_new_run(), budget.level()),
         Precondition("Home postcode", bool(cfg.home_postcode), cfg.home_postcode or "missing"),
+        Precondition(
+            "Workbook",
+            bool(cfg.workbook_id),
+            "configured"
+            if cfg.workbook_id
+            else "XSOURCE_WORKBOOK_ID unset; run `xsource workbook init`",
+        ),
     ]
 
 
@@ -434,6 +443,7 @@ def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
         also_try=list(triage_dict.get("also_try", [])),
         email_vars=dict(triage_dict["email_vars"]),
         place_type=triage_dict.get("place_type"),
+        short_label=triage_dict.get("short_label", ""),
     )
     book_suppliers = find_matches(
         suppliers.all(),
@@ -473,20 +483,28 @@ def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
 
 
 def _review_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
-    if not confirm_apply(ctx, prompt="Create request sheet?", equivalent_cli=None):  # type: ignore[arg-type]
-        return StepResult(ok=False, message="Apply declined.")
-    from google.oauth2.credentials import Credentials
+    from xsource.walks.request_new import apply_request, shortlist_preview_rows
+    from xsource.workbook.client import WorkbookClient
+    from xsource.workbook.redraw import add_job_tab, redraw_workbook
 
-    from xsource.walks.request_new import apply_request
+    ctx.console.print("[bold]Shortlist[/bold]")
+    for line in shortlist_preview_rows(bag["result"].shortlist):
+        ctx.console.print(f"  {line}")
+    if not confirm_apply(ctx, prompt="Create job tab?", equivalent_cli=None):  # type: ignore[arg-type]
+        return StepResult(ok=False, message="Apply declined.")
 
     cfg = Config.from_env()
+    workbook_id = cfg.workbook_id or ""
     suppliers, requests_, _invoices = build_stores(cfg)
+    log = build_log_store(cfg)
+    client = WorkbookClient(
+        Credentials.from_authorized_user_file(os.environ["XSOURCE_SHEETS_TOKEN_PATH"])
+    )
+    now = dt.datetime.now(dt.UTC)
 
-    def create_sheet(title: str, values: list[list[str]]) -> tuple[str, str]:
-        creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_SHEETS_TOKEN_PATH"])
-        return SheetClient(creds).create_request_sheet(
-            title, values, cfg.drive_folder_id, cfg.staff_share_group
-        )
+    def add_tab(request: Request) -> tuple[str, int]:
+        # Index 3 puts the newest job first, after the fixed tabs.
+        return add_job_tab(workbook_id=workbook_id, client=client, request=request, index=3)
 
     request = apply_request(
         raw_need=bag["raw_need"],
@@ -495,14 +513,25 @@ def _review_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
         result=bag["result"],
         suppliers=suppliers,
         requests=requests_,
-        create_sheet_fn=create_sheet,
-        now=dt.datetime.now(),
+        add_job_tab_fn=add_tab,
+        log=log,
+        now=now,
     )
+    redraw_workbook(
+        workbook_id=workbook_id,
+        client=client,
+        suppliers=suppliers,
+        requests=requests_,
+        log=log,
+        drawn_file=build_drawn_state_file(cfg),
+        now=now,
+    )
+    url = f"https://docs.google.com/spreadsheets/d/{workbook_id}/edit#gid={request.job_tab_gid}"
     return StepResult(
         ok=True,
         data={
-            "summary": f"Created {request.id}.",
-            "result_links": [("Sheet", request.sheet_url or "")],
+            "summary": f"Created {request.id} as tab {request.job_tab}.",
+            "result_links": [("Job tab", url)],
         },
     )
 
@@ -577,8 +606,8 @@ _request_outreach_handler = make_walk_handler(
 
 
 _TRIGGER_BLAST = BlastRadius(
-    summary="Creates one Google Sheet and writes request + suppliers to the xsource store. Does not send or draft any email.",
-    reversible="Sheet can be deleted; store records can be removed by id.",
+    summary="Adds one job tab to the workbook and writes request + suppliers to the xsource store. Does not send or draft any email.",
+    reversible="The tab can be deleted; store records can be removed by id.",
 )
 
 _FOLLOWUP_BLAST = BlastRadius(
@@ -587,8 +616,8 @@ _FOLLOWUP_BLAST = BlastRadius(
 )
 
 _REORDER_BLAST = BlastRadius(
-    summary="Creates one Google Sheet and writes a reorder request + suppliers to the xsource store. Does not send or draft any email.",
-    reversible="Sheet can be deleted; store records can be removed by id.",
+    summary="Adds one job tab to the workbook and writes a reorder request + suppliers to the xsource store. Does not send or draft any email.",
+    reversible="The tab can be deleted; store records can be removed by id.",
 )
 
 

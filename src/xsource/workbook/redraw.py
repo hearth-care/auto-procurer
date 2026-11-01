@@ -107,6 +107,18 @@ def redraw_workbook(
     return {"jobs": len(jobs), "warnings": warnings}
 
 
+def add_job_tab(
+    *, workbook_id: str, client: WorkbookClient, request: Request, index: int | None = None
+) -> tuple[str, int]:
+    created = dt.datetime.fromisoformat(request.created_at).date()
+    existing = client.tab_ids(workbook_id)
+    name = layout.job_tab_name(request.title or "", created, set(existing))
+    gid = client.ensure_tab(workbook_id, name, index=len(existing) if index is None else index)
+    # format_tab is not idempotent; the name is unique, so the tab is always new here.
+    client.format_tab(workbook_id, gid, "energy" if request.energy else "job")
+    return name, gid
+
+
 def unmigrated(requests) -> list[Request]:
     return [r for r in requests.all() if r.status == "open" and r.sheet_id and not r.job_tab]
 
@@ -139,11 +151,7 @@ def migrate_open_requests(
 
         category = r.triage.get("category") or " ".join(r.raw_need.split())[:40]
         r.title = r.title or category
-        created = dt.datetime.fromisoformat(r.created_at).date()
-        existing = client.tab_ids(workbook_id)
-        r.job_tab = layout.job_tab_name(r.title, created, set(existing))
-        r.job_tab_gid = client.ensure_tab(workbook_id, r.job_tab, index=len(existing))
-        client.format_tab(workbook_id, r.job_tab_gid, "energy" if r.energy else "job")
+        r.job_tab, r.job_tab_gid = add_job_tab(workbook_id=workbook_id, client=client, request=r)
         requests.upsert(r)
         # A reused tab name must not inherit a deleted tab's last-drawn cells.
         if drawn.pop(r.job_tab, None) is not None:

@@ -133,9 +133,16 @@ def test_trigger_walk_email_payload_creates_request(monkeypatch, tmp_path):
     def fake_review_apply_step(ctx, bag):
         from xsource.walks.request_new import apply_request
 
-        def create_sheet(title, values):
-            captured_sheet_calls.append({"title": title, "values": values})
-            return ("sheet-id-1", "https://sheets.example/1")
+        class _Log:
+            def next_id(self, prefix):
+                return f"{prefix}-0001"
+
+            def upsert(self, entry):
+                pass
+
+        def add_tab(request):
+            captured_sheet_calls.append({"title": request.title})
+            return ("Tab", 1)
 
         req = apply_request(
             raw_need=bag["raw_need"],
@@ -144,7 +151,8 @@ def test_trigger_walk_email_payload_creates_request(monkeypatch, tmp_path):
             result=bag["result"],
             suppliers=suppliers_store,
             requests=requests_store,
-            create_sheet_fn=create_sheet,
+            add_job_tab_fn=add_tab,
+            log=_Log(),
             now=dt.datetime(2026, 6, 11, 10, 0),
         )
         return StepResult(ok=True, data={"summary": f"Created {req.id}."})
