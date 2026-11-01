@@ -107,3 +107,32 @@ def test_apply_reply_to_request_updates_reply_without_closing_request():
     assert request.shortlist[0].reply["status"] == "quoted"
     assert request.shortlist[0].reply["quote_amount"] == 185
     assert request.shortlist[0].reply["received_at"] == "2026-06-11T09:38:00+00:00"
+
+
+def test_a_booked_firm_confirming_its_price_stays_booked():
+    request = Request(
+        id="r-1",
+        created_at="2026-06-10T15:58:00+00:00",
+        raw_need="x",
+        shortlist=[
+            ShortlistEntry(supplier_id="s-1", rank=1, outreach={"thread_id": "t"}, stage="Booked")
+        ],
+    )
+    parsed = ParsedReply(
+        status="quoted",
+        quote_amount=250,
+        currency="GBP",
+        includes=None,
+        availability=None,
+        conditions=None,
+        declined=False,
+        summary="Confirmed, £250 as agreed.",
+        source_span="£250 as agreed",
+    )
+
+    apply_reply_to_request(
+        request, thread_id="t", parsed=parsed, received_at=dt.datetime(2026, 6, 12, tzinfo=dt.UTC)
+    )
+
+    assert request.shortlist[0].stage == "Booked"
+    assert request.shortlist[0].latest_price_minor == 25000

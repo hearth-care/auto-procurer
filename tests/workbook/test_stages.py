@@ -85,3 +85,22 @@ def test_closed_request_is_done():
     r = _request(stages=["Quoted"], job_stage="Waiting for prices", status="closed")
     assert advance(r) == ["Stage: Waiting for prices → Done"]
     assert (r.stage, r.next_step, r.waiting_on) == ("Done", "", "Nobody")
+
+
+def test_a_price_on_a_booked_firm_keeps_it_booked():
+    e = ShortlistEntry(supplier_id="s-1", rank=1, stage="Booked")
+    record_price(e, 25000, on=dt.date(2026, 11, 6), via="email")
+    assert e.stage == "Booked"
+    assert e.latest_price_minor == 25000
+
+
+def test_a_price_moves_an_emailed_firm_to_quoted():
+    e = ShortlistEntry(supplier_id="s-1", rank=1, stage="Emailed")
+    record_price(e, 25000, on=dt.date(2026, 11, 6), via="email")
+    assert e.stage == "Quoted"
+
+
+def test_a_late_price_from_a_firm_not_chosen_keeps_it_not_chosen():
+    e = ShortlistEntry(supplier_id="s-2", rank=2, stage="Not chosen")
+    record_price(e, 31000, on=dt.date(2026, 11, 6), via="email")
+    assert e.stage == "Not chosen"

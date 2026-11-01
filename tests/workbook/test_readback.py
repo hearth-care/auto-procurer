@@ -212,3 +212,13 @@ def test_money_cells_compare_by_value():
     rows = [list(JOB_COLUMNS), _row(firm="Acme Testing", latest_price="£780.00")]
     read_job_edits(rows, req, suppliers, on=ON, drawn=drawn)
     assert e.latest_price_minor == 70000
+
+
+def test_price_edit_on_a_booked_row_keeps_it_booked():
+    req = _job(firms=["Acme Testing"])
+    e = req.shortlist[0]
+    e.first_price_minor = e.latest_price_minor = 30000
+    e.stage = "Booked"
+    rows = [list(JOB_COLUMNS), _row(firm="Acme Testing", latest_price="£280", stage="Booked")]
+    assert _read(rows, req, _suppliers()) == []
+    assert (e.latest_price_minor, e.stage) == (28000, "Booked")

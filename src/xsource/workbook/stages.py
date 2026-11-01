@@ -10,7 +10,10 @@ def record_price(entry: ShortlistEntry, amount_minor: int, *, on: dt.date, via: 
     if entry.first_price_minor is None:
         entry.first_price_minor = amount_minor
     entry.latest_price_minor = amount_minor
-    entry.stage = "Quoted"
+    # Once a firm is booked (or another was booked instead) a price only updates the figure;
+    # moving it back to Quoted would un-book the job on the next advance().
+    if entry.stage not in ("Booked", "Not chosen"):
+        entry.stage = "Quoted"
     entry.last_contact = {"date": on.isoformat(), "via": via}
 
 
