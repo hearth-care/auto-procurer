@@ -1017,7 +1017,7 @@ _board_handler = make_walk_handler(
     steps=[Step(label="Board", run=_board_step)],
     blast_radius=_BOARD_BLAST,
     preconditions_fn=_readonly_preconditions,
-    equivalent_cli=_CLI_REQUEST_LIST,
+    equivalent_cli="",  # cockpit-only page; no CLI twin
     total=2,
 )
 
@@ -1338,7 +1338,7 @@ def register_all() -> None:
             shelf="B",
             title="Board",
             summary="Open jobs: stage, quotes in, best price, who it is waiting on. Changes nothing.",
-            equivalent_cli=_CLI_REQUEST_LIST,
+            equivalent_cli="",
             run=_board_handler,
             blast_radius=_BOARD_BLAST,
             money_movement=False,
