@@ -107,12 +107,27 @@ def redraw_workbook(
     return {"jobs": len(jobs), "warnings": warnings}
 
 
+def forget_drawn(drawn_file: SyncedFile, tab: str) -> None:
+    # A reused tab name must not inherit a deleted tab's last-drawn cells.
+    drawn = _load_drawn(drawn_file)
+    if drawn.pop(tab, None) is not None:
+        _save_drawn(drawn_file, drawn)
+
+
 def add_job_tab(
-    *, workbook_id: str, client: WorkbookClient, request: Request, index: int | None = None
+    *,
+    workbook_id: str,
+    client: WorkbookClient,
+    request: Request,
+    requests,
+    index: int | None = None,
 ) -> tuple[str, int]:
-    created = dt.datetime.fromisoformat(request.created_at).date()
+    created = layout.london_date(request.created_at)
     existing = client.tab_ids(workbook_id)
-    name = layout.job_tab_name(request.title or "", created, set(existing))
+    # A tab deleted by hand leaves its job pointing at the name (it is skipped, not
+    # recreated), so a new job taking that name would share a tab with it.
+    taken = set(existing) | {r.job_tab for r in requests.all() if r.job_tab}
+    name = layout.job_tab_name(request.title or "", created, taken)
     gid = client.ensure_tab(workbook_id, name, index=len(existing) if index is None else index)
     # format_tab is not idempotent; the name is unique, so the tab is always new here.
     client.format_tab(workbook_id, gid, "energy" if request.energy else "job")
@@ -134,7 +149,6 @@ def migrate_open_requests(
     drawn_file: SyncedFile,
     now: dt.datetime,
 ) -> list[str]:
-    drawn = _load_drawn(drawn_file)
     moved: list[str] = []
     for r in unmigrated(requests):
         rows = legacy_sheets.read_request_rows(r.sheet_id or "")
@@ -151,11 +165,11 @@ def migrate_open_requests(
 
         category = r.triage.get("category") or " ".join(r.raw_need.split())[:40]
         r.title = r.title or category
-        r.job_tab, r.job_tab_gid = add_job_tab(workbook_id=workbook_id, client=client, request=r)
+        r.job_tab, r.job_tab_gid = add_job_tab(
+            workbook_id=workbook_id, client=client, request=r, requests=requests
+        )
         requests.upsert(r)
-        # A reused tab name must not inherit a deleted tab's last-drawn cells.
-        if drawn.pop(r.job_tab, None) is not None:
-            _save_drawn(drawn_file, drawn)
+        forget_drawn(drawn_file, r.job_tab)
         _log(log, r, "Moved from its old Sheet", now)
         moved.append(f"{r.id} -> {r.job_tab}")
     return moved

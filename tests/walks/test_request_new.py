@@ -5,6 +5,7 @@ from workbook.fakes import FakeWorkbookClient
 
 from xsource.research.candidates import Candidate
 from xsource.research.pipeline import ResearchResult, RunCaps
+from xsource.store.files import SyncedFile
 from xsource.store.jsonl import JsonlStore
 from xsource.store.models import Request, Supplier
 from xsource.walks.request_new import apply_request, build_shortlist_rows, shortlist_preview_rows
@@ -149,7 +150,8 @@ def _wired_review(monkeypatch, tmp_path, *, confirm):
     )
     monkeypatch.setattr(cockpit, "build_stores", lambda cfg: (suppliers, requests_, object()))
     monkeypatch.setattr(cockpit, "build_log_store", lambda cfg: _Log())
-    monkeypatch.setattr(cockpit, "build_drawn_state_file", lambda cfg: object())
+    drawn_file = SyncedFile(tmp_path / "workbook-drawn.json", blob=None)
+    monkeypatch.setattr(cockpit, "build_drawn_state_file", lambda cfg: drawn_file)
     monkeypatch.setattr(
         cockpit.Credentials, "from_authorized_user_file", staticmethod(lambda path: object())
     )
@@ -171,7 +173,7 @@ def _wired_review(monkeypatch, tmp_path, *, confirm):
         "constraints": {},
         "result": _result(Candidate(name="Near Co", source="places", extra={"miles": 3.2})),
     }
-    return cockpit, ctx, bag, fake, suppliers, requests_, events, None
+    return cockpit, ctx, bag, fake, suppliers, requests_, events, drawn_file
 
 
 def test_review_prints_shortlist_before_asking_to_confirm(monkeypatch, tmp_path):
@@ -298,3 +300,15 @@ def test_cockpit_steps_call_triage_and_research_pipeline(monkeypatch):
     assert calls["research"]["triage"] == triage
     assert [c.name for c in calls["research"]["book_matches"]] == ["Old Friend"]
     assert research_result.data["result"].shortlist[0].source == "book"
+
+
+def test_a_new_tab_does_not_inherit_a_stale_snapshot_under_its_name(monkeypatch, tmp_path):
+    import json
+
+    cockpit, ctx, bag, _fake, _s, _r, _events, drawn_file = _wired_review(
+        monkeypatch, tmp_path, confirm=True
+    )
+    drawn_file.path.write_text(json.dumps({"Tree Nov 2026": {"near co": {"Notes": "old"}}}))
+    monkeypatch.setattr("xsource.workbook.redraw.add_job_tab", lambda **kw: ("Tree Nov 2026", 9))
+    assert cockpit._review_apply_step(ctx, bag).ok
+    assert "Tree Nov 2026" not in json.loads(drawn_file.path.read_text())

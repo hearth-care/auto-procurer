@@ -491,7 +491,7 @@ def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
 def _review_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     from xsource.walks.request_new import apply_request, shortlist_preview_rows
     from xsource.workbook.client import WorkbookClient
-    from xsource.workbook.redraw import add_job_tab, redraw_workbook
+    from xsource.workbook.redraw import add_job_tab, forget_drawn, redraw_workbook
 
     ctx.console.print("[bold]Shortlist[/bold]")
     for line in shortlist_preview_rows(bag["result"].shortlist):
@@ -510,7 +510,9 @@ def _review_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
 
     def add_tab(request: Request) -> tuple[str, int]:
         # Index 3 puts the newest job first, after the fixed tabs.
-        return add_job_tab(workbook_id=workbook_id, client=client, request=request, index=3)
+        return add_job_tab(
+            workbook_id=workbook_id, client=client, request=request, requests=requests_, index=3
+        )
 
     request = apply_request(
         raw_need=bag["raw_need"],
@@ -523,13 +525,15 @@ def _review_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
         log=log,
         now=now,
     )
+    drawn_file = build_drawn_state_file(cfg)
+    forget_drawn(drawn_file, request.job_tab or "")
     redraw_workbook(
         workbook_id=workbook_id,
         client=client,
         suppliers=suppliers,
         requests=requests_,
         log=log,
-        drawn_file=build_drawn_state_file(cfg),
+        drawn_file=drawn_file,
         now=now,
     )
     url = f"https://docs.google.com/spreadsheets/d/{workbook_id}/edit#gid={request.job_tab_gid}"

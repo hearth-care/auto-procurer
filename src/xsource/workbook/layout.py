@@ -218,6 +218,10 @@ def black_book_rows(suppliers: list[Supplier], requests: list[Request]) -> list[
     return rows
 
 
+def london_date(at: str) -> dt.date:
+    return _london(at).date()
+
+
 def _london(at: str) -> dt.datetime:
     parsed = dt.datetime.fromisoformat(at)
     if parsed.tzinfo is None:

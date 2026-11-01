@@ -362,3 +362,26 @@ def test_a_firm_whose_name_needs_escaping_still_matches_its_own_row(tmp_path):
     report = _redraw(client, suppliers, requests, FakeStore(), df)
     assert report["warnings"] == []
     assert job.shortlist[0].notes == "rings back"
+
+
+def test_a_new_tab_never_takes_the_name_of_a_job_whose_tab_was_deleted():
+    from xsource.workbook.redraw import add_job_tab
+
+    deleted = _job(job_tab="EICR Nov 2026")
+    new = _job(id="r-2", job_tab=None, job_tab_gid=None)
+    client = FakeWorkbookClient()
+    name, _gid = add_job_tab(
+        workbook_id="wb", client=client, request=new, requests=FakeStore([deleted, new])
+    )
+    assert name == "EICR Nov 2026 (2)"
+
+
+def test_the_tab_month_is_the_london_date_the_job_was_raised():
+    from xsource.workbook.redraw import add_job_tab
+
+    # 23:30 UTC on 30 September is 00:30 on 1 October in London (BST).
+    new = _job(created_at="2026-09-30T23:30:00+00:00", job_tab=None, job_tab_gid=None)
+    name, _gid = add_job_tab(
+        workbook_id="wb", client=FakeWorkbookClient(), request=new, requests=FakeStore([new])
+    )
+    assert name == "EICR Oct 2026"
