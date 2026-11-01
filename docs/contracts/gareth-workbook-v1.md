@@ -31,13 +31,14 @@ One row per open job. "formula" columns are written as Sheet formulas, never as 
 | C | Stage | store: request stage (see Stages) |
 | D | Firms keen | formula: count of job-tab rows with stage `Keen`, `Emailed`, `Quoted` or `Booked` |
 | E | Quotes in | formula: count of non-empty price-column cells on the job tab |
-| F | Best price | formula: `=MIN('<tab>'!<P>:<P>)` |
-| G | Best firm | formula: `=INDEX('<tab>'!B:B, MATCH(MIN('<tab>'!<P>:<P>), '<tab>'!<P>:<P>, 0))` |
+| F | Best price | formula: `=IF(E<r>=0,"",MIN('<tab>'!<P>:<P>))` |
+| G | Best firm | formula: `=IF(E<r>=0,"",INDEX('<tab>'!B:B, MATCH(MIN('<tab>'!<P>:<P>), '<tab>'!<P>:<P>, 0)))` |
+| H | Next step | store |
+| I | Waiting on | store: `You: <action>` or `Nobody` |
 
 `<P>` is the job tab's price column, found by header: `Latest price` (column K) on a standard
 tab, `Est. yearly cost` (column M) on an energy tab.
-| H | Next step | store |
-| I | Waiting on | store: `You: <action>` or `Nobody` |
+`<r>` is the row number the formula sits on.
 
 ## Job tab (standard trades)
 
@@ -93,10 +94,12 @@ One row per kind of job.
 | G | Last price | |
 | H | Contract ends | date or blank |
 | I | Notice to give | days or blank |
-| J | Tell them by | formula: `=IF(H="","",H-I)`; red when under 60 days away |
+| J | Tell them by | formula: `=IF(H<r>="","",H<r>-I<r>)`; red when under 60 days away |
 | K | Documents | link to the firm's Drive folder |
 | L | How we chose them | link to the job tab |
 | M | In Xero | tick, set when Milo confirms |
+
+`<r>` is the row number the formula sits on.
 
 ## Log
 
