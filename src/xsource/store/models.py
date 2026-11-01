@@ -20,6 +20,45 @@ class InvoiceTransitionError(ValueError):
     pass
 
 
+def _v1_entry_stage(e: dict[str, Any]) -> str:
+    reply = (e.get("reply") or {}).get("status")
+    if reply == "quoted":
+        return "Quoted"
+    if reply in ("declined", "no"):
+        return "Declined"
+    outreach = (e.get("outreach") or {}).get("status")
+    if outreach == "asked":
+        return "Emailed"
+    if outreach == "draft_ready":
+        return "Keen"
+    return "To call"
+
+
+def _upgrade_v1(d: dict[str, Any]) -> dict[str, Any]:
+    """Stages and prices only; the job stage beyond Done/Calling is recomputed on the next redraw."""
+    closed = d.get("status") == "closed"
+    chosen = d.get("chosen_supplier_id") if closed else None
+    entries = []
+    for e in d.get("shortlist", []):
+        e = dict(e)
+        if chosen:
+            e["stage"] = "Booked" if e.get("supplier_id") == chosen else "Not chosen"
+        else:
+            e["stage"] = _v1_entry_stage(e)
+        amount = (e.get("reply") or {}).get("quote_amount")
+        if (e.get("reply") or {}).get("status") == "quoted" and amount is not None:
+            minor = round(amount * 100)
+            e.setdefault("first_price_minor", minor)
+            e.setdefault("latest_price_minor", minor)
+        entries.append(e)
+    return {
+        **d,
+        "schema_version": 2,
+        "stage": "Done" if closed else "Calling",
+        "shortlist": entries,
+    }
+
+
 @dataclass
 class Supplier:
     id: str
@@ -43,6 +82,12 @@ class Supplier:
     price_history: list[dict[str, Any]] = field(default_factory=list)
     notes: list[dict[str, Any]] = field(default_factory=list)
     recurs_every_months: int | None = None
+    schema_version: int = 2
+    contact_name: str | None = None
+    drive_folder_id: str | None = None
+    contract_ends: str | None = None
+    notice_days: int | None = None
+    in_xero: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -60,6 +105,15 @@ class ShortlistEntry:
     outreach: dict[str, Any] = field(default_factory=dict)
     reply: dict[str, Any] = field(default_factory=dict)
     excluded: bool = False
+    stage: str = "To call"
+    miles: float | None = None
+    first_price_minor: int | None = None
+    latest_price_minor: int | None = None
+    energy_quote: dict[str, Any] = field(default_factory=dict)
+    last_contact: dict[str, str] = field(default_factory=dict)
+    call_ids: list[str] = field(default_factory=list)
+    contact_name: str | None = None
+    notes: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -83,6 +137,14 @@ class Request:
     shortlist: list[ShortlistEntry] = field(default_factory=list)
     chosen_supplier_id: str | None = None
     watcher: dict[str, Any] = field(default_factory=dict)
+    schema_version: int = 2
+    title: str | None = None
+    stage: str = "Searching"
+    job_tab: str | None = None
+    job_tab_gid: int | None = None
+    energy: bool = False
+    next_step: str = ""
+    waiting_on: str = "Nobody"
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -93,6 +155,8 @@ class Request:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Request:
+        if d.get("schema_version", 1) < 2:
+            d = _upgrade_v1(d)
         filtered = dict(_filtered(cls, d))
         filtered["shortlist"] = [ShortlistEntry.from_dict(e) for e in filtered.get("shortlist", [])]
         return cls(**filtered)
@@ -147,4 +211,19 @@ class InvoiceRecord:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> InvoiceRecord:
+        return cls(**_filtered(cls, d))
+
+
+@dataclass
+class LogEntry:
+    id: str
+    at: str
+    request_id: str | None
+    text: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> LogEntry:
         return cls(**_filtered(cls, d))
