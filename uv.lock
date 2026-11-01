@@ -238,8 +238,8 @@ wheels = [
 
 [[package]]
 name = "clonway-cockpit"
-version = "0.4.0"
-source = { git = "https://github.com/hearth-care/clonway-cockpit.git?rev=v0.4.0#0b0ee7a06ef0aa55ba62a149d50eefe40248bd66" }
+version = "0.5.0"
+source = { git = "https://github.com/hearth-care/clonway-cockpit.git?rev=8e2a4e48196efe630a74556331951f9c095c84a7#8e2a4e48196efe630a74556331951f9c095c84a7" }
 dependencies = [
     { name = "rich" },
 ]
@@ -1088,7 +1088,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.109.1" },
-    { name = "clonway-cockpit", git = "https://github.com/hearth-care/clonway-cockpit.git?rev=v0.4.0" },
+    { name = "clonway-cockpit", git = "https://github.com/hearth-care/clonway-cockpit.git?rev=8e2a4e48196efe630a74556331951f9c095c84a7" },
     { name = "google-api-python-client", specifier = ">=2.197.0" },
     { name = "google-cloud-storage", specifier = ">=2.16" },
     { name = "requests", specifier = ">=2.34.2" },
