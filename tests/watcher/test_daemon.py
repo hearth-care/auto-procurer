@@ -314,3 +314,39 @@ def test_a_request_with_only_a_legacy_sheet_id_is_still_processed_without_sheet_
 
     assert result["processed"] == 1
     assert request.shortlist[0].outreach["status"] == "asked"
+
+
+def test_a_failed_redraw_is_retried_next_cycle(tmp_path):
+    import pytest
+
+    request = _request()
+    requests = _Store([request])
+    state = ProcessedMessageStore(tmp_path / "watcher.sqlite3")
+    kwargs = dict(
+        requests=requests,
+        suppliers=_Store([Supplier(id="s-1", name="Tree Co", email="tree@example.com")]),
+        gmail=_Gmail({"thr-1": [_own_message("sent-1", draft=False)]}),
+        gateway=_Gateway(),
+        state=state,
+        now=dt.datetime(2026, 6, 11, 9, 40, tzinfo=dt.UTC),
+    )
+
+    def _boom():
+        raise RuntimeError("sheets 503")
+
+    with pytest.raises(RuntimeError):
+        process_once(redraw_fn=_boom, **kwargs)
+    assert requests.get("r-0042").watcher["redraw_pending"] is True
+
+    redraw = _Redraw()
+    result = process_once(redraw_fn=redraw, **kwargs)
+
+    assert result["processed"] == 0
+    assert redraw.call_count == 1
+    assert "redraw_pending" not in requests.get("r-0042").watcher
+
+
+def test_no_workbook_never_sets_the_pending_flag(tmp_path):
+    request = _request()
+    _cycle(request, [_own_message("sent-1", draft=False)], tmp_path, None)
+    assert "redraw_pending" not in request.watcher

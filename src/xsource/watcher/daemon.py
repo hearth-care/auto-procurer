@@ -1,7 +1,7 @@
 """One-cycle reply watcher orchestration.
 
 The long-running launchd loop calls ``process_once`` repeatedly. Keeping this
-function pure-ish and injectable makes the Gmail/Sheets behaviour testable
+function pure-ish and injectable makes the Gmail and workbook-redraw behaviour testable
 without live credentials.
 """
 
@@ -159,6 +159,9 @@ def process_once(
         else:
             request.watcher.pop("missing_threads", None)
         request.watcher["last_checked_at"] = _iso(now)
+        # Survives a failed redraw, so the next cycle retries it.
+        if pending_marks and redraw_fn is not None:
+            request.watcher["redraw_pending"] = True
         # Persist the updated request first.  Only mark messages processed when
         # we know the updated state has been durably written to GCS.
         requests.upsert(request)
@@ -166,7 +169,12 @@ def process_once(
             state.mark_processed(message_id, action)
         processed += len(pending_marks)
 
-    if processed and redraw_fn is not None:
-        redraw_fn()
+    if redraw_fn is not None:
+        flagged = [r for r in _open_requests(requests) if r.watcher.get("redraw_pending")]
+        if flagged:
+            redraw_fn()
+            for request in flagged:
+                request.watcher.pop("redraw_pending", None)
+                requests.upsert(request)
 
     return {"processed": processed, "possible_replies": possible_replies}
