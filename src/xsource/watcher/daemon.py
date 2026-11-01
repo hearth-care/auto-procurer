@@ -8,6 +8,7 @@ without live credentials.
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from xsource.store.models import Request, Supplier
@@ -27,6 +28,7 @@ class WatcherMessage:
     body: str
     received_at: dt.datetime
     is_outbound: bool = False
+    is_draft: bool = False
 
 
 def _iso(when: dt.datetime) -> str:
@@ -88,11 +90,8 @@ def _flag_possible_replies(
     return added
 
 
-def _entry_rank_for_thread(request: Request, thread_id: str) -> int | None:
-    for entry in request.shortlist:
-        if entry.outreach.get("thread_id") == thread_id:
-            return entry.rank
-    return None
+def _has_thread(request: Request, thread_id: str) -> bool:
+    return any(entry.outreach.get("thread_id") == thread_id for entry in request.shortlist)
 
 
 def process_once(
@@ -100,7 +99,7 @@ def process_once(
     requests,
     suppliers,
     gmail,
-    sheets,
+    redraw_fn: Callable[[], None] | None,
     gateway,
     state,
     now: dt.datetime,
@@ -130,20 +129,14 @@ def process_once(
                 missing.append(thread_id)
                 continue
             for message in thread_messages:
-                if state.seen(message.id):
+                # Gmail lists our unsent draft in its thread, from our own address. It is
+                # neither sent nor a reply; the message sent from it gets a new id.
+                if message.is_draft or state.seen(message.id):
                     continue
-                rank = _entry_rank_for_thread(request, thread_id)
-                if rank is None:
+                if not _has_thread(request, thread_id):
                     continue
                 if message.is_outbound:
                     if mark_thread_sent(request, thread_id=thread_id, sent_at=message.received_at):
-                        if request.sheet_id:
-                            sheets.mark_asked(
-                                request.sheet_id,
-                                rank=rank,
-                                asked_at=message.received_at,
-                                updated_at=now,
-                            )
                         pending_marks.append((message.id, "sent"))
                     continue
                 parsed = parse_supplier_reply(message.body, gateway)
@@ -153,14 +146,6 @@ def process_once(
                     parsed=parsed,
                     received_at=message.received_at,
                 ):
-                    if request.sheet_id:
-                        sheets.write_reply(
-                            request.sheet_id,
-                            rank=rank,
-                            parsed=parsed,
-                            received_at=message.received_at,
-                            updated_at=now,
-                        )
                     pending_marks.append((message.id, "parsed"))
 
         possible_replies += _flag_possible_replies(
@@ -174,13 +159,14 @@ def process_once(
         else:
             request.watcher.pop("missing_threads", None)
         request.watcher["last_checked_at"] = _iso(now)
-        if request.sheet_id:
-            sheets.update_heartbeat(request.sheet_id, now)
         # Persist the updated request first.  Only mark messages processed when
         # we know the updated state has been durably written to GCS.
         requests.upsert(request)
         for message_id, action in pending_marks:
             state.mark_processed(message_id, action)
         processed += len(pending_marks)
+
+    if processed and redraw_fn is not None:
+        redraw_fn()
 
     return {"processed": processed, "possible_replies": possible_replies}

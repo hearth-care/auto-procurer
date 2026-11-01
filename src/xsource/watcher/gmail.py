@@ -56,6 +56,7 @@ class GmailWatcherClient:
             body=_body(payload),
             received_at=_received_at(message),
             is_outbound=from_addr in self.own_addresses,
+            is_draft="DRAFT" in message.get("labelIds", []),
         )
 
     def list_thread_messages(self, thread_id: str) -> list[WatcherMessage]:

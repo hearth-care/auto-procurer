@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import datetime as dt
-
 from xsource.sheet.client import SheetClient
-from xsource.watcher.parser import ParsedReply
 
 
 class _Executable:
@@ -53,51 +50,6 @@ def _client():
     client.sheets = _Sheets()
     client.drive = _Drive()
     return client
-
-
-def test_write_reply_batches_reply_quote_status_and_updated_cells():
-    client = _client()
-    parsed = ParsedReply(
-        status="quoted",
-        quote_amount=185,
-        currency="GBP",
-        includes="cut and chip",
-        availability="Thursday",
-        conditions=None,
-        declined=False,
-        summary="Quoted £185.",
-        source_span="£185",
-    )
-
-    client.write_reply(
-        "sheet-1",
-        rank=2,
-        parsed=parsed,
-        received_at=dt.datetime(2026, 6, 11, 9, 38, tzinfo=dt.UTC),
-        updated_at=dt.datetime(2026, 6, 11, 9, 40, tzinfo=dt.UTC),
-    )
-
-    call = client.sheets.spreadsheets().values().batch_updates[0]
-    assert call["spreadsheetId"] == "sheet-1"
-    assert call["body"]["data"] == [
-        {
-            "range": "H3:M3",
-            "values": [
-                ["Quoted", "2026-06-11 09:38", "Quoted £185.", "185", "", "2026-06-11 09:40"]
-            ],
-        }
-    ]
-
-
-def test_update_heartbeat_writes_outside_request_table():
-    client = _client()
-
-    client.update_heartbeat("sheet-1", dt.datetime(2026, 6, 11, 9, 40, tzinfo=dt.UTC))
-
-    call = client.sheets.spreadsheets().values().updates[0]
-    assert call["spreadsheetId"] == "sheet-1"
-    assert call["range"] == "O1"
-    assert call["body"]["values"] == [["xsource last checked 2026-06-11 09:40"]]
 
 
 def test_read_request_rows_maps_human_columns():
