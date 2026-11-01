@@ -13,12 +13,6 @@ from typing import Any
 
 from clonway_cockpit.mail_identity import MailIdentity, format_from_header
 
-_MILO_GARTH_IDENTITY = MailIdentity(
-    address="milo.garth@clonwaycare.co.uk",
-    display_name="Milo Garth",
-    source="xsource.outreach",
-)
-
 
 class OutreachDraftBlocked(RuntimeError):
     """Raised when a draft request violates xsource's safety invariants."""
@@ -31,7 +25,8 @@ class SafeOutreachClient:
     endpoints anywhere in ``src/xsource``.
     """
 
-    def __init__(self, service: Any) -> None:
+    def __init__(self, service: Any, identity: MailIdentity) -> None:
+        self.__identity = identity
         self.__service = service
 
     def create_draft(self, *, to: str, subject: str, body: str, label: str) -> dict[str, str]:
@@ -44,7 +39,7 @@ class SafeOutreachClient:
 
         try:
             mime = MIMEMultipart("alternative")
-            mime["From"] = format_from_header(_MILO_GARTH_IDENTITY)
+            mime["From"] = format_from_header(self.__identity)
             mime["To"] = to
             mime["Subject"] = subject
             mime.attach(MIMEText(body, "plain", _charset="utf-8"))

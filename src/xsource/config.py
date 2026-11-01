@@ -8,7 +8,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from clonway_cockpit.mail_identity import MailIdentity
+
 DEFAULT_MODEL = "claude-sonnet-5-5"
+DEFAULT_MAILBOX_ADDRESS = "milo.garth@clonwaycare.co.uk"
 
 
 def _int(name: str, default: int) -> int:
@@ -34,6 +37,10 @@ class Config:
     fleet_bucket: str | None
     state_prefix: str
     operator_display_name: str
+    workbook_id: str | None = None
+    home_town: str | None = None
+    mailbox_address: str = DEFAULT_MAILBOX_ADDRESS
+    mailbox_display_name: str = ""
 
     @classmethod
     def from_env(cls) -> Config:
@@ -64,5 +71,16 @@ class Config:
             model_chain=chain,
             fleet_bucket=os.environ.get("XSOURCE_FLEET_BUCKET") or None,
             state_prefix=os.environ.get("XSOURCE_STATE_PREFIX", "state/xsource").strip("/"),
-            operator_display_name=os.environ.get("XSOURCE_OPERATOR_DISPLAY_NAME", "Milo"),
+            operator_display_name=os.environ.get("XSOURCE_OPERATOR_DISPLAY_NAME", "Gareth"),
+            workbook_id=os.environ.get("XSOURCE_WORKBOOK_ID") or None,
+            home_town=os.environ.get("XSOURCE_HOME_TOWN") or None,
+            mailbox_address=os.environ.get("XSOURCE_MAILBOX_ADDRESS") or DEFAULT_MAILBOX_ADDRESS,
+            mailbox_display_name=os.environ.get("XSOURCE_MAILBOX_DISPLAY_NAME") or "",
+        )
+
+    def mail_identity(self) -> MailIdentity:
+        return MailIdentity(
+            address=self.mailbox_address,
+            display_name=self.mailbox_display_name or self.operator_display_name,
+            source="xsource.outreach",
         )

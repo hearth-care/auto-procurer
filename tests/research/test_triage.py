@@ -4,6 +4,7 @@ from xsource.research.triage import Triage, TriageError, run_triage
 
 GOOD = {
     "category": "trees-grounds",
+    "short_label": "Trees",
     "search_terms": ["tree surgeon", "tree removal"],
     "also_try": ["chipper hire"],
     "email_vars": {"job_summary": "fallen tree, cut/chip/remove", "location_town": "Newton Abbot"},
@@ -35,3 +36,10 @@ def test_missing_field_raises_clean_error():
 def test_empty_search_terms_rejected():
     with pytest.raises(TriageError):
         run_triage("tree down", {}, FakeGateway({**GOOD, "search_terms": []}))
+
+
+def test_short_label_is_kept_and_capped_at_twenty_characters():
+    t = run_triage("tree down", {}, FakeGateway({**GOOD, "short_label": "x" * 30}))
+    assert t.short_label == "x" * 20
+    assert t.to_dict()["short_label"] == "x" * 20
+    assert run_triage("tree down", {}, FakeGateway(GOOD)).short_label == "Trees"

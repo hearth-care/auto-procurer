@@ -47,3 +47,50 @@ def test_watcher_status_prints_open_requests_and_last_check(monkeypatch, tmp_pat
     assert result.stdout == (
         "open_requests=2\nr-0001 last_checked=2026-09-23T09:58:00+00:00\nr-0002 last_checked=-\n"
     )
+
+
+def test_a_failed_redraw_still_uploads_the_processed_message_state(monkeypatch, tmp_path):
+    import pytest
+
+    from xsource.cli import watcher as cli_watcher
+    from xsource.config import Config
+
+    uploads = []
+
+    class FakeSyncedFile:
+        def __init__(self, path, blob=None):
+            self.path = path
+
+        def hydrate(self):
+            pass
+
+        def upload(self):
+            uploads.append(self.path.name)
+
+    class Store:
+        offline = False
+
+    monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("XSOURCE_WORKBOOK_ID", "wb-1")
+    monkeypatch.setattr(cli_watcher, "SyncedFile", FakeSyncedFile)
+    monkeypatch.setattr(cli_watcher, "build_stores", lambda cfg: (Store(), Store(), None))
+    monkeypatch.setattr(cli_watcher, "_gmail_service", lambda: None)
+    monkeypatch.setattr(cli_watcher, "_workbook_client", lambda: None)
+    monkeypatch.setattr(cli_watcher, "build_log_store", lambda cfg: None)
+    monkeypatch.setattr(cli_watcher, "build_drawn_state_file", lambda cfg: None)
+
+    def failing_redraw(**_kw):
+        raise RuntimeError("Black book tab renamed")
+
+    def process_once(*, state, redraw_fn, **_kw):
+        state.mark_processed("m-1", "parsed")
+        redraw_fn()
+
+    monkeypatch.setattr(cli_watcher, "redraw_workbook", failing_redraw)
+    monkeypatch.setattr(cli_watcher, "process_once", process_once)
+
+    run_once = cli_watcher._process_factory(Config.from_env())
+    with pytest.raises(RuntimeError, match="Black book"):
+        run_once()
+
+    assert uploads == ["watcher.sqlite3"]

@@ -1,0 +1,145 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Gareth system</title><style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px;color:#202124;background:#fafafa}.subtitle{opacity:.75}</style>
+<p style="font-size:12px;opacity:.7">Reviewed mock-up, normative alongside docs/contracts/gareth-*-v1.md. Firms, people, numbers and prices are made up.</p>
+<style>
+ .legend span{display:inline-block;padding:2px 10px;margin:0 8px 6px 0;font-size:12px;border-radius:4px;color:#202124}
+ .old{background:#eceff1;border:1px solid #b0bec5}
+ .chg{background:#fff4d6;border:1px solid #e0a800}
+ .new{background:#e3f5e8;border:1px solid #2e9e55}
+ .ext{background:#fff;border:1px dashed #888}
+ .you{background:#fde2d4;border:1px solid #d9622b}
+ .lane{display:grid;grid-template-columns:170px 1fr;gap:10px;margin:8px 0;align-items:stretch}
+ .lane>.lbl{font-size:12.5px;font-weight:600;opacity:.75;padding-top:8px}
+ .row{display:flex;flex-wrap:wrap;gap:8px}
+ .box{padding:8px 10px;border-radius:6px;font-size:12.5px;line-height:1.35;color:#202124;min-width:150px;flex:1}
+ .box b{display:block;font-size:13px;margin-bottom:2px}
+ .arrow{text-align:center;font-size:12px;opacity:.7;margin:2px 0}
+ h3{margin-top:26px}
+ .note{font-size:13px;opacity:.85;max-width:900px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+ .chat{background:#fff;border:1px solid #dadce0;border-radius:8px;padding:12px;font-family:Arial,sans-serif;font-size:13px;color:#202124}
+ .chat .hdr{font-weight:600;border-bottom:1px solid #eee;padding-bottom:6px;margin-bottom:8px}
+ .me,.g{padding:8px 11px;border-radius:12px;margin:6px 0;line-height:1.4}
+ .me{background:#d3e3fd;margin-left:60px}
+ .g{background:#f1f3f4;margin-right:30px}
+ .who{font-size:11px;opacity:.6;margin-bottom:2px}
+ .card{border:1px solid #dadce0;border-radius:8px;background:#fff;padding:8px 10px;margin-top:6px}
+ .btn{display:inline-block;border:1px solid #1a73e8;color:#1a73e8;border-radius:14px;padding:2px 10px;font-size:12px;margin:4px 6px 0 0}
+ .btn.p{background:#1a73e8;color:#fff}
+ .tui{background:#0f1419;color:#cfd8dc;font-family:Menlo,monospace;font-size:12px;line-height:1.45;padding:12px;border-radius:8px;white-space:pre;overflow-x:auto}
+ .tui .h{color:#7fdbca}.tui .y{color:#ffcb6b}.tui .g{background:none;color:#c3e88d;padding:0;margin:0;border-radius:0}.tui .d{color:#78909c}.tui .r{color:#f07178}
+ .crumbs{font-family:Arial,sans-serif;font-size:13px;line-height:2}
+ .crumbs .c{display:inline-block;background:#fff;color:#202124;border:1px solid #dadce0;border-radius:14px;padding:1px 10px}
+ .crumbs .s{opacity:.5;margin:0 4px}
+ table.t{border-collapse:collapse;font-size:12.5px;width:100%;background:#fff;color:#202124}
+ table.t th,table.t td{border:1px solid #e0e0e0;padding:5px 8px;text-align:left;vertical-align:top}
+ table.t th{background:#f1f3f4}
+</style>
+
+<h2>Gareth: how it all fits together</h2>
+<p class="subtitle">Five pictures: the system, where you touch it, the Chat and terminal screens, the call recordings, and the trail of links from a chat message down to a signed quote. Firms, people and prices are made up.</p>
+<p class="legend"><span class="old">Grey: exists today, unchanged</span><span class="chg">Amber: exists, changes</span><span class="new">Green: new</span><span class="ext">Dashed: outside system</span><span class="you">Orange: you</span></p>
+
+<h3>1 · The system</h3>
+<p class="note">Gareth is today's procurement worker (the program behind the terminal screen you saw) with a Chat front door and a phone-call pipeline added. Chat and the terminal are two windows onto the same Gareth: anything you can do in one you can do in the other, and both go through the same "are you sure?" step before anything is written.</p>
+
+<div class="lane"><div class="lbl">You</div><div class="row">
+ <div class="box you"><b>Google Chat, DM with Gareth</b>Ask in plain English, approve with a button</div>
+ <div class="box you"><b>Terminal screen (xsource)</b>Same jobs, same buttons, keyboard instead of chat</div>
+ <div class="box you"><b>Your phone, via 3CX</b>You ring the firms on Gareth's call list</div>
+ <div class="box you"><b>Gmail, Gareth's mailbox</b>You read and press Send on his drafts</div>
+</div></div>
+<div class="arrow">▼ ▲</div>
+<div class="lane"><div class="lbl">Front doors</div><div class="row">
+ <div class="box new"><b>Chat front door</b>Turns your message into the same actions the terminal offers. Writes need your tap on a card</div>
+ <div class="box chg"><b>Terminal screens</b>New pages: Board, Call list, Calls to file. Existing pages kept</div>
+ <div class="box new"><b>Nudges</b>Morning note, "price in", "time to haggle", "who was this number?"</div>
+</div></div>
+<div class="arrow">▼ ▲</div>
+<div class="lane"><div class="lbl">What Gareth does</div><div class="row">
+ <div class="box old"><b>Find firms</b>Google Maps search round the home, distances</div>
+ <div class="box new"><b>Call list</b>Who to ring today, numbers with the leading 0</div>
+ <div class="box new"><b>File calls</b>Matches each 3CX recording to a firm by phone number, reads the transcript, logs the outcome and price</div>
+ <div class="box chg"><b>Draft emails</b>Follow-ups after a call, "can you beat £780?", booking notes. Still drafts only, never sent</div>
+ <div class="box old"><b>Watch replies</b>Reads firms' replies, pulls out prices</div>
+ <div class="box chg"><b>Invoices and quotes</b>Steers them to accounts@, files the PDF in the firm's folder</div>
+ <div class="box new"><b>Hand to Milo</b>New supplier won → Milo creates the Xero contact</div>
+</div></div>
+<div class="arrow">▼ ▲</div>
+<div class="lane"><div class="lbl">Where it's kept</div><div class="row">
+ <div class="box chg"><b>One lasting Sheet</b>Board · a tab per job · Black book · Log. Replaces a new Sheet per search</div>
+ <div class="box chg"><b>Drive: 9-Operations › Suppliers</b>Folder per firm (tidied today) plus a folder per job in _Shortlists</div>
+ <div class="box ext"><b>Phone log › Transcripts</b>A Google Doc per call, as today. Recordings stay in 3CX</div>
+ <div class="box ext"><b>Milo → Xero</b>Supplier contacts</div>
+</div></div>
+
+<h3>2 · Where you step in</h3>
+<p class="note">Everything Gareth does to the outside world goes past you first. He never rings anyone, never sends an email and never books a job himself.</p>
+<table class="t">
+<tr><th>Moment</th><th>Where</th><th>What you do</th><th>What Gareth does next</th></tr>
+<tr><td>Start a job</td><td>Chat or terminal</td><td>"Need an EICR for the whole building"</td><td>Searches, shows the shortlist, waits for your OK before writing the job tab</td></tr>
+<tr><td>Calls</td><td>Your 3CX phone</td><td>Ring down today's list</td><td>Files each recording, reads it, fills in stage, price and notes</td></tr>
+<tr><td>Check what he heard</td><td>Chat card / terminal</td><td>Tap OK, or correct a price</td><td>Writes the job tab, drafts the follow-up email</td></tr>
+<tr><td>Emails</td><td>Gmail (Gareth's mailbox)</td><td>Read the draft, press Send</td><td>Watches for the reply</td></tr>
+<tr><td>Haggle</td><td>Chat card</td><td>Approve "can you beat £780?"</td><td>Drafts it to the firm you pick</td></tr>
+<tr><td>Choose the winner</td><td>Chat or terminal</td><td>"Go with Exampleton, 10 Nov"</td><td>Booking draft (meet Chris, 8 till 4), firm folder, black book row, hand to Milo</td></tr>
+<tr><td>Unknown number</td><td>Chat</td><td>"That was Sample Sparks"</td><td>Files the call and remembers the number</td></tr>
+</table>
+
+<h3>3 · The two windows</h3>
+<div class="two">
+<div class="chat"><div class="hdr">Gareth · Direct message</div>
+ <div class="g"><div class="who">Gareth · 08:30</div>Morning. EICR: 3 prices in, best £780 from Exampleton. 2 firms still to ring. Waste renewal: tell Example Waste by 2 Nov if we're leaving.</div>
+ <div class="g"><div class="who">Gareth · 11:42</div>Filed 4 calls from this morning:
+  <div class="card">✅ Sample Sparks (Sue): £810, can do w/c 17 Nov<br>✅ Testbury Electric (Ian): keen, price by Tue, email info@…<br>☎️ Mock Power: no answer<br>❓ 01632 960999: not a number I know
+   <div><span class="btn p">Looks right</span><span class="btn">Fix a price</span><span class="btn">Read transcript</span></div></div>
+ </div>
+ <div class="me"><div class="who">You</div>the 01632 one was Mock Wiring Co, they said no</div>
+ <div class="g"><div class="who">Gareth</div>Got it, marked declined and saved their number. Follow-up drafts for Sample and Testbury are in my mailbox. Want me to ask Sample to beat £780?
+  <div><span class="btn p">Draft it</span><span class="btn">Not yet</span></div></div>
+</div>
+<div class="tui"><span class="h">xsource · Gareth                              Sun 1 Nov 11:45</span>
+<span class="d">─────────────────────────────────────────────────────────</span>
+ <span class="y">Board</span>   Call list   Calls to file   Jobs   Black book   Log
+
+ Job                      Stage     Quotes  Best             Waiting on
+ <span class="g">▸ EICR, whole building    Haggling  3       £780 Exampleton  you: approve draft</span>
+   Waste (renewal)        Calling   0       —                you: 5 calls
+   Kitchen extract        Booked    —       £350 Mock Fan    nobody
+
+ <span class="h">EICR · call list today</span>
+   1  Mock Power Ltd     01632 960444   no answer 31 Oct
+   2  Demo Electrical    01632 960555   not rung yet
+
+ <span class="h">Calls to file</span>  <span class="r">1 unmatched</span>
+   11:20  01632 960999   2m14s   <span class="d">"…we don't do commercial…"</span>
+
+<span class="d">─────────────────────────────────────────────────────────</span>
+ <span class="d">enter open · c call list · f file call · d draft · a apply (asks first)</span></div>
+</div>
+
+<h3>4 · Calls and transcripts</h3>
+<p class="note">Transcripts already arrive in the operator's Phone log › Transcripts folder, one Google Doc per call, named like "2026-10-31 1145 Outbound 01632960101 [call id]". Each starts with the direction, the number, who answered, the length, a caller type (for example "Supplier — Sam from Example Co"), a summary and any follow-up promised. Recordings stay in 3CX. Because every firm's number is on its job tab and in the black book, Gareth can tell which firm each call was with, and after a round of calls you only check his summary.</p>
+<div class="lane"><div class="lbl">Steps</div><div class="row">
+ <div class="box ext"><b>1 · Transcript appears</b>In Phone log › Transcripts, as today</div>
+ <div class="box new"><b>2 · Match</b>Number in the title → firm (job tabs first, then black book). Short local numbers like 960202 get 01632 added. Everything else is left unread</div>
+ <div class="box new"><b>3 · Link</b>A copy goes into the job's folder under the firm's name. The original stays where it is</div>
+ <div class="box new"><b>4 · Read</b>Uses the summary and follow-up to fill outcome, price, dates, email. Shows you before writing</div>
+ <div class="box chg"><b>5 · Record</b>Job tab row: stage, price, last contact, a "Calls" link. Log line</div>
+ <div class="box chg"><b>6 · If they win</b>Their call copies move into their supplier folder with the quote</div>
+</div></div>
+<p class="note">Resident and family calls sit in the same folder, so Gareth only opens a transcript whose number belongs to a firm he's dealing with. Anything unmatched outbound to a business number he asks you about in Chat; inbound calls from unknown numbers he ignores.</p>
+
+<h3>5 · Following the breadcrumbs</h3>
+<p class="note">Every step is a link, so from a chat message you can walk down to the original recording or the signed quote, and back up again.</p>
+<div class="crumbs">
+ <span class="c">Chat: "Exampleton booked, 10 Nov"</span><span class="s">→</span>
+ <span class="c">Sheet › Board › EICR row</span><span class="s">→</span>
+ <span class="c">Tab "EICR Nov 2026" › Exampleton row</span><span class="s">→</span>
+ <span class="c">Calls link · Email thread link</span><br>
+ <span class="c">Black book › "Electrical testing"</span><span class="s">→</span>
+ <span class="c">Drive › Suppliers › Exampleton Electrical - electrical testing</span><span class="s">→</span>
+ <span class="c">2026-11-03 Quote - EICR.pdf · 2026-10-31 Call - Exampleton (transcript)</span><br>
+ <span class="c">Black book › "How we chose them"</span><span class="s">→</span>
+ <span class="c">Tab "EICR Nov 2026": all 9 firms, every price, why each dropped</span><span class="s">→</span>
+ <span class="c">Drive › Suppliers › _Shortlists › EICR Nov 2026 › calls from the firms who lost</span>
+</div>

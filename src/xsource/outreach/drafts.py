@@ -9,6 +9,7 @@ from pathlib import Path
 
 from clonway_cockpit.persona_soul import compose_system_prompt
 
+from xsource.config import Config
 from xsource.store.models import Request, Supplier
 
 OUTBOX_LABEL = "xsource/outbox"
@@ -42,16 +43,18 @@ def build_outreach_system_prompt() -> str:
     return compose_system_prompt(_STANCE_PATH.read_text())
 
 
-def _draft_context(request: Request) -> tuple[str, str, str]:
+def _draft_context(request: Request, cfg: Config) -> tuple[str, str | None, str]:
     email_vars = dict(request.triage.get("email_vars", {}))
     job_summary = email_vars.get("job_summary") or request.raw_need
-    town = email_vars.get("location_town") or request.constraints.get("location_town") or "the area"
+    town = (
+        email_vars.get("location_town") or request.constraints.get("location_town") or cfg.home_town
+    )
     needed_by = request.constraints.get("needed_by") or "when convenient"
     return job_summary, town, needed_by
 
 
-def _draft_prompt(request: Request, supplier: Supplier) -> str:
-    job_summary, town, needed_by = _draft_context(request)
+def _draft_prompt(request: Request, supplier: Supplier, cfg: Config) -> str:
+    job_summary, town, needed_by = _draft_context(request, cfg)
     return "\n".join(
         [
             build_outreach_system_prompt(),
@@ -60,9 +63,9 @@ def _draft_prompt(request: Request, supplier: Supplier) -> str:
             f"Supplier: {supplier.name}",
             f"Job summary: {job_summary}",
             f"Job details (copy these facts exactly): {request.raw_need}",
-            f"Town: {town}",
+            f"Town: {town or 'not known: do not mention a town'}",
             f"Needed by: {needed_by}",
-            "Operator first name: Milo",
+            f"Operator first name: {cfg.operator_display_name}",
             "",
             "Return a short subject and the email body. Put the request reference on the "
             "body's last line.",
@@ -73,12 +76,13 @@ def _draft_prompt(request: Request, supplier: Supplier) -> str:
 def build_quote_request(request: Request, supplier: Supplier, gateway=None) -> QuoteDraft:
     if not supplier.email:
         raise ValueError(f"supplier {supplier.id} has no email")
-    job_summary, town, needed_by = _draft_context(request)
+    cfg = Config.from_env()
+    job_summary, town, needed_by = _draft_context(request, cfg)
     # Triage's job summary runs to a paragraph, so the fallback subject uses the trade.
     subject = f"Quote please: {request.triage.get('category') or job_summary}"
     if gateway is not None:
         result = gateway.complete_structured(
-            [{"role": "user", "content": _draft_prompt(request, supplier)}],
+            [{"role": "user", "content": _draft_prompt(request, supplier, cfg)}],
             _DRAFT_SCHEMA,
             role="outreach",
         )
@@ -86,14 +90,19 @@ def build_quote_request(request: Request, supplier: Supplier, gateway=None) -> Q
         if written and len(written) <= 80 and request.id not in written:
             subject = written
         return QuoteDraft(to=supplier.email, subject=subject, body=str(result["body"]).strip())
+    intro = (
+        f"We're a care home near {town} and we're after someone for a job."
+        if town
+        else "We're a local care home and we're after someone for a job."
+    )
     body = "\n\n".join(
         [
             "Hi there,",
-            f"We're a care home near {town} and we're after someone for a job.",
+            intro,
             f"The job:\n{request.raw_need}\nNeeded: {needed_by}",
             "Could you give us a rough price and say when you could fit it in? "
             "Happy for you to pop round and have a look first.",
-            "Cheers,\nMilo",
+            f"Cheers,\n{cfg.operator_display_name}",
             f"ref {request.id}",
         ]
     )

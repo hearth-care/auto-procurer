@@ -21,6 +21,11 @@ TRIAGE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "category": {"type": "string"},
+        "short_label": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "A tab label of at most 20 characters, e.g. EICR.",
+        },
         "search_terms": {"type": "array", "items": {"type": "string"}, "minItems": 1},
         "also_try": {"type": "array", "items": {"type": "string"}},
         "place_type": {
@@ -37,7 +42,7 @@ TRIAGE_SCHEMA: dict[str, Any] = {
             "required": ["job_summary", "location_town"],
         },
     },
-    "required": ["category", "search_terms", "also_try", "place_type", "email_vars"],
+    "required": ["category", "short_label", "search_terms", "also_try", "place_type", "email_vars"],
 }
 
 _SYSTEM = (
@@ -53,6 +58,7 @@ class Triage:
     also_try: list[str]
     email_vars: dict[str, str]
     place_type: str | None = None
+    short_label: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -61,6 +67,7 @@ class Triage:
             "also_try": self.also_try,
             "email_vars": self.email_vars,
             "place_type": self.place_type,
+            "short_label": self.short_label,
         }
 
 
@@ -77,6 +84,7 @@ def run_triage(raw_need: str, constraints: dict[str, Any], gateway) -> Triage:
     try:
         triage = Triage(
             category=str(out["category"]),
+            short_label=str(out.get("short_label") or "")[:20],
             search_terms=[str(x) for x in out["search_terms"]],
             also_try=[str(x) for x in out.get("also_try", [])],
             email_vars={k: str(v) for k, v in out["email_vars"].items()},

@@ -127,3 +127,16 @@ def test_a_404_thread_becomes_thread_missing_and_other_errors_still_raise():
         GmailWatcherClient(_Service(404), own_addresses=set()).list_thread_messages("gone")
     with pytest.raises(HttpError):
         GmailWatcherClient(_Service(500), own_addresses=set()).list_thread_messages("thr")
+
+
+def test_a_message_labelled_draft_is_flagged_as_a_draft():
+    draft = _message("m-d", "thr-1", "milo.garth@clonwaycare.co.uk", "Hello")
+    draft["labelIds"] = ["DRAFT"]
+    sent = _message("m-s", "thr-1", "milo.garth@clonwaycare.co.uk", "Hello")
+    sent["labelIds"] = ["SENT"]
+    service = _Service({"thr-1": {"messages": [draft, sent]}}, {})
+    client = GmailWatcherClient(service, own_addresses={"milo.garth@clonwaycare.co.uk"})
+
+    out = client.list_thread_messages("thr-1")
+
+    assert [m.is_draft for m in out] == [True, False]

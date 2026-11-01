@@ -1,0 +1,111 @@
+import re
+from pathlib import Path
+
+import pytest
+
+from xsource.workbook import contract
+
+WORKBOOK = Path("docs/contracts/gareth-workbook-v1.md")
+
+
+def parse_contract_tables(path: Path) -> dict[str, list[dict[str, str]]]:
+    tables: dict[str, list[dict[str, str]]] = {}
+    heading = ""
+    header: list[str] | None = None
+    for line in path.read_text().splitlines():
+        if re.match(r"#{2,3} ", line):
+            heading = line.lstrip("#").strip()
+            header = None
+        elif line.startswith("|"):
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if header is None:
+                header = cells
+                tables[heading] = []
+            elif not all(re.fullmatch(r"-+", c) for c in cells):
+                tables[heading].append(dict(zip(header, cells, strict=False)))
+        else:
+            header = None
+    return tables
+
+
+def test_tab_names_match_contract():
+    tabs = parse_contract_tables(WORKBOOK)["Tabs"]
+    assert tuple(r["Tab name"].strip("`") for r in tabs[:3]) == contract.FIXED_TABS
+
+
+@pytest.mark.parametrize(
+    "heading, columns",
+    [
+        ("Board", contract.BOARD_COLUMNS),
+        ("Job tab (standard trades)", contract.JOB_COLUMNS),
+        ("Black book", contract.BLACK_BOOK_COLUMNS),
+        ("Log", contract.LOG_COLUMNS),
+    ],
+)
+def test_columns_match_contract(heading, columns):
+    rows = parse_contract_tables(WORKBOOK)[heading]
+    assert tuple(r["Header"] for r in rows) == columns
+    assert [r["Col"] for r in rows] == [chr(ord("A") + i) for i in range(len(columns))]
+
+
+def test_energy_columns_replace_prices_and_shift_by_two():
+    assert contract.ENERGY_JOB_COLUMNS[9:13] == (
+        "Term",
+        "Unit rate",
+        "Standing charge",
+        "Est. yearly cost",
+    )
+    assert contract.ENERGY_JOB_COLUMNS[13:] == contract.JOB_COLUMNS[11:]
+
+
+def test_stages_match_contract():
+    text = WORKBOOK.read_text()
+    assert all(f"`{s}`" in text for s in contract.FIRM_STAGES + contract.JOB_STAGES)
+    assert contract.FIRM_STAGES[0] == "To call" and contract.JOB_STAGES[-1] == "Done"
+
+
+def test_contract_version_matches():
+    assert f"contract_version: {contract.CONTRACT_VERSION}" in WORKBOOK.read_text()
+
+
+def test_board_formula_shapes_match_contract():
+    from xsource.store.models import Request
+    from xsource.workbook.layout import board_rows
+
+    rows = {r["Header"]: r["Source"] for r in parse_contract_tables(WORKBOOK)["Board"]}
+    for energy, tab, price_col in [(False, "EICR Nov 2026", "K"), (True, "Power Nov 2026", "M")]:
+        request = Request(
+            id="r", created_at="2026-11-01T09:00:00+00:00", raw_need="n",
+            title=tab, job_tab=tab, job_tab_gid=1, energy=energy,
+        )  # fmt: skip
+        row = board_rows([request], start_row=7)[0]
+        for header, index in [("Best price", 5), ("Best firm", 6)]:
+            template = rows[header].removeprefix("formula: ").strip("`")
+            expected = template.replace("<tab>", tab).replace("<P>", price_col).replace("<r>", "7")
+            assert row[index] == expected
+        assert row[4] == f"=COUNT('{tab}'!{price_col}2:{price_col})"
+
+
+SCREENS = Path("docs/contracts/gareth-screens-v1.md")
+_LATER_STAGES = {"call_list": 2, "calls_to_file": 2}
+
+
+def test_screen_pages_exist():
+    from clonway_cockpit import contract as cockpit_contract
+    from clonway_cockpit import registry
+
+    from xsource.cli import cockpit
+
+    pages = [r["Page id"].strip("`") for r in parse_contract_tables(SCREENS)["Cockpit pages (new)"]]
+    registry.clear_capabilities()
+    cockpit.register_all()
+    try:
+        registered = {c.key for c in registry.get_capabilities()}
+        for page in pages:
+            if page in _LATER_STAGES:
+                assert page not in registered
+            else:
+                assert page in registered
+        cockpit_contract.assert_render_model_parity(cockpit)
+    finally:
+        registry.clear_capabilities()

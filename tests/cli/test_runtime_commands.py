@@ -152,10 +152,41 @@ def test_watcher_run_once_can_idle_without_anthropic_key(monkeypatch, tmp_path):
         watcher, "build_stores", lambda cfg: (_EmptyStore(), _EmptyStore(), _EmptyStore())
     )
     monkeypatch.setattr(watcher, "_gmail_service", lambda: object())
-    monkeypatch.setattr(watcher, "_sheet_client", lambda: object())
     monkeypatch.setattr(watcher, "GmailWatcherClient", lambda service, own_addresses: _NoopGmail())
 
     result = runner.invoke(app, ["watcher", "run", "--once"])
 
     assert result.exit_code == 0
     assert "'processed': 0" in result.stdout
+
+
+def _wire_watcher(monkeypatch, tmp_path, seen):
+    from xsource.cli import watcher
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        watcher, "build_stores", lambda cfg: (_EmptyStore(), _EmptyStore(), _EmptyStore())
+    )
+    monkeypatch.setattr(watcher, "_gmail_service", lambda: object())
+    monkeypatch.setattr(watcher, "_workbook_client", lambda: object())
+    monkeypatch.setattr(watcher, "build_log_store", lambda cfg: object())
+    monkeypatch.setattr(watcher, "build_drawn_state_file", lambda cfg: object())
+    monkeypatch.setattr(watcher, "GmailWatcherClient", lambda service, own_addresses: _NoopGmail())
+    monkeypatch.setattr(
+        watcher, "process_once", lambda **kwargs: seen.append(kwargs["redraw_fn"]) or {}
+    )
+    return watcher
+
+
+def test_watcher_builds_a_redraw_only_when_a_workbook_is_configured(monkeypatch, tmp_path):
+    seen = []
+    watcher = _wire_watcher(monkeypatch, tmp_path, seen)
+
+    monkeypatch.delenv("XSOURCE_WORKBOOK_ID", raising=False)
+    watcher._process_factory(watcher.Config.from_env())()
+    monkeypatch.setenv("XSOURCE_WORKBOOK_ID", "wb-1")
+    watcher._process_factory(watcher.Config.from_env())()
+
+    assert seen[0] is None
+    assert callable(seen[1])

@@ -26,6 +26,13 @@ def test_deploy_workflow_mounts_secret_files_and_existing_env_paths() -> None:
     )
 
 
+def test_deploy_passes_the_workbook_id_so_a_redeploy_keeps_it() -> None:
+    workflow = Path(".github/workflows/deploy-cloud-run.yml").read_text()
+
+    assert "XSOURCE_WORKBOOK_ID: ${{ vars.XSOURCE_WORKBOOK_ID }}" in workflow
+    assert "for name in XSOURCE_WORKBOOK_ID " in workflow
+
+
 def test_operator_provisioning_script_is_stdlib_and_prints_secret_commands() -> None:
     path = Path("scripts/provision_cloud_run.py")
     script = path.read_text()

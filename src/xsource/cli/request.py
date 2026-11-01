@@ -100,12 +100,28 @@ def sync_all() -> None:
     suppliers, requests, _invoices = build_stores(cfg)
     with run_session(trigger="request.sync-all", args={}):
         try:
-            report = sync_all_requests(
-                suppliers=suppliers,
-                requests=requests,
-                sheets=_sheet_client(),
-                synced_at=dt.datetime.now(dt.UTC),
-            )
+            now = dt.datetime.now(dt.UTC)
+            if cfg.workbook_id:
+                from xsource.cli.workbook import _workbook_client
+                from xsource.wiring import build_drawn_state_file, build_log_store
+                from xsource.workbook.redraw import redraw_workbook
+
+                report = redraw_workbook(
+                    workbook_id=cfg.workbook_id,
+                    client=_workbook_client(),
+                    suppliers=suppliers,
+                    requests=requests,
+                    log=build_log_store(cfg),
+                    drawn_file=build_drawn_state_file(cfg),
+                    now=now,
+                )
+            else:
+                report = sync_all_requests(
+                    suppliers=suppliers,
+                    requests=requests,
+                    sheets=_sheet_client(),
+                    synced_at=now,
+                )
             emit_heartbeat(job_name="request-sync-all", outcome="ok", counts=report)
             write_heartbeat("xsource.sync", ok=True, detail=str(report))
         except Exception as exc:

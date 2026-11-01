@@ -3,6 +3,7 @@ import pytest
 from xsource.store.models import (
     InvoiceRecord,
     InvoiceTransitionError,
+    LogEntry,
     Request,
     ShortlistEntry,
     Supplier,
@@ -127,3 +128,107 @@ def test_invoice_rejects_illegal_lifecycle_transition():
 
     with pytest.raises(InvoiceTransitionError):
         invoice.transition_to("settled", at="2026-06-11T13:00:00+00:00")
+
+
+def test_v1_request_upgrades_on_read():
+    old = {
+        "id": "r-0001",
+        "created_at": "2026-10-31T16:20:00+00:00",
+        "raw_need": "EICR",
+        "status": "open",
+        "sheet_id": "legacy",
+        "shortlist": [
+            {"supplier_id": "s-0001", "rank": 1, "outreach": {"status": "asked"}},
+            {
+                "supplier_id": "s-0002",
+                "rank": 2,
+                "reply": {"status": "quoted", "quote_amount": 780},
+            },
+            {"supplier_id": "s-0003", "rank": 3},
+        ],
+    }
+    req = Request.from_dict(old)
+    assert req.schema_version == 2
+    assert req.stage == "Calling"
+    assert [e.stage for e in req.shortlist] == ["Emailed", "Quoted", "To call"]
+    assert req.shortlist[1].latest_price_minor == 78000
+    assert req.shortlist[1].first_price_minor == 78000
+    assert req.job_tab is None and req.sheet_id == "legacy"
+
+
+def test_v1_draft_ready_and_declined_map_to_stages():
+    old = {
+        "id": "r-0003",
+        "created_at": "2026-10-31T16:20:00+00:00",
+        "raw_need": "x",
+        "shortlist": [
+            {"supplier_id": "s-1", "rank": 1, "outreach": {"status": "draft_ready"}},
+            {"supplier_id": "s-2", "rank": 2, "reply": {"status": "declined"}},
+            {"supplier_id": "s-3", "rank": 3, "reply": {"status": "no"}},
+        ],
+    }
+    req = Request.from_dict(old)
+    assert [e.stage for e in req.shortlist] == ["Keen", "Declined", "Declined"]
+    assert all(e.latest_price_minor is None for e in req.shortlist)
+
+
+def test_v2_round_trips_unchanged():
+    req = Request(
+        id="r-0002",
+        created_at="2026-11-01T09:00:00+00:00",
+        raw_need="x",
+        title="EICR",
+        stage="Calling",
+        shortlist=[ShortlistEntry(supplier_id="s-1", rank=1, stage="Keen", miles=3.2)],
+    )
+    assert Request.from_dict(req.to_dict()) == req
+
+
+def test_v2_stages_are_not_remapped_on_read():
+    d = Request(
+        id="r-0004",
+        created_at="2026-11-01T09:00:00+00:00",
+        raw_need="x",
+        shortlist=[
+            ShortlistEntry(supplier_id="s-1", rank=1, stage="To call", outreach={"status": "asked"})
+        ],
+    ).to_dict()
+    assert Request.from_dict(d).shortlist[0].stage == "To call"
+
+
+def test_closed_v1_request_with_chosen_supplier_upgrades_to_done_and_booked():
+    old = {
+        "id": "r-0005",
+        "created_at": "2026-10-31T16:20:00+00:00",
+        "raw_need": "EICR",
+        "status": "closed",
+        "chosen_supplier_id": "s-0002",
+        "shortlist": [
+            {"supplier_id": "s-0001", "rank": 1, "outreach": {"status": "asked"}},
+            {
+                "supplier_id": "s-0002",
+                "rank": 2,
+                "reply": {"status": "quoted", "quote_amount": 780},
+            },
+        ],
+    }
+    req = Request.from_dict(old)
+    assert req.stage == "Done"
+    assert {e.supplier_id: e.stage for e in req.shortlist} == {
+        "s-0001": "Not chosen",
+        "s-0002": "Booked",
+    }
+    assert req.shortlist[1].latest_price_minor == 78000
+
+
+def test_v1_supplier_gains_defaults():
+    s = Supplier.from_dict({"id": "s-1", "name": "Acme Electrics"})
+    assert s.schema_version == 2
+    assert s.contact_name is None and s.in_xero is False and s.notice_days is None
+
+
+def test_log_entry_round_trips():
+    e = LogEntry(
+        id="l-0001", at="2026-11-01T09:00:00+00:00", request_id="r-0001", text="Job tab created"
+    )
+    assert LogEntry.from_dict(e.to_dict()) == e

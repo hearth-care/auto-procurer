@@ -36,6 +36,7 @@ def test_create_followup_draft_uses_existing_thread_reference_and_remains_draft_
         request,
         supplier,
         draft_client=client,
+        operator_name="Jane",
         now=dt.datetime(2026, 6, 11, 10, 0, tzinfo=dt.UTC),
     )
 

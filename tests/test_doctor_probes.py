@@ -67,10 +67,11 @@ def test_doctor_probe_names_in_order(report):
         "Budget",
         "Home postcode",
         "Store records",
+        "Workbook",
         "Reply watcher",
         "Pending signals",
     ]
-    assert all(p.fix is None for p in probes[-3:])
+    assert all(p.fix is None for p in probes[-2:])
 
 
 def test_store_records_probe_counts(report):
@@ -262,8 +263,92 @@ def test_doctor_frame_lists_new_probes_via_drive(report, monkeypatch):
     stream = CockpitDriver(cockpit._host(agent_mode=True), keys=["G", "q"]).run()
     frame = next(frame for frame in stream if frame.kind == "doctor")
     region = next(region for region in frame.regions if region.role == "probes")
-    assert [row.label for row in region.rows][-3:] == [
+    assert [row.label for row in region.rows][-4:] == [
         "Store records",
+        "Workbook",
         "Reply watcher",
         "Pending signals",
     ]
+
+
+class _FakeWorkbook:
+    def __init__(self, tabs=None, error=None):
+        self.tabs, self.error = tabs, error
+
+    def tab_ids(self, workbook_id):
+        if self.error:
+            raise self.error
+        return self.tabs
+
+
+def _with_workbook(report, monkeypatch, client, workbook_id="wb-1"):
+    monkeypatch.setattr(cockpit, "_workbook_client", lambda: client)
+    report["cfg"] = Config(**{**report["cfg"].__dict__, "workbook_id": workbook_id})
+
+
+def test_workbook_probe_warns_with_fix_when_id_unset(report):
+    probe = _probe(report, "Workbook")
+    assert probe.level == "warn"
+    assert probe.fix.title == "Run xsource workbook init and set XSOURCE_WORKBOOK_ID"
+
+
+def test_workbook_probe_ok_without_fix(report, monkeypatch):
+    from xsource.workbook.contract import FIXED_TABS
+
+    _with_workbook(report, monkeypatch, _FakeWorkbook({t: i for i, t in enumerate(FIXED_TABS)}))
+    probe = _probe(report, "Workbook")
+    assert probe.level == "ok" and probe.fix is None
+
+
+def test_workbook_probe_errors_on_missing_tab_and_on_failure(report, monkeypatch):
+    from xsource.workbook.contract import FIXED_TABS
+
+    _with_workbook(report, monkeypatch, _FakeWorkbook({FIXED_TABS[0]: 0}))
+    probe = _probe(report, "Workbook")
+    assert probe.level == "error" and FIXED_TABS[1] in probe.detail
+    _with_workbook(report, monkeypatch, _FakeWorkbook(error=RuntimeError("403 no access")))
+    probe = _probe(report, "Workbook")
+    assert probe.level == "error" and probe.fix
+    assert probe.detail == "Could not read the workbook: RuntimeError: 403 no access"
+    assert "XSOURCE_WORKBOOK_ID" not in probe.fix.title
+
+
+def test_workbook_probe_names_missing_credentials_setting(report, monkeypatch):
+    _with_workbook(report, monkeypatch, _FakeWorkbook(error=KeyError("XSOURCE_SHEETS_TOKEN_PATH")))
+    probe = _probe(report, "Workbook")
+    assert probe.level == "error"
+    assert probe.detail == "Sheets credentials not set (XSOURCE_SHEETS_TOKEN_PATH)"
+    assert "XSOURCE_SHEETS_TOKEN_PATH" in probe.fix.title
+    assert "XSOURCE_WORKBOOK_ID" not in probe.fix.title
+
+
+def test_workbook_probe_missing_tab_fix_is_not_to_set_workbook_id(report, monkeypatch):
+    from xsource.workbook.contract import FIXED_TABS
+
+    _with_workbook(report, monkeypatch, _FakeWorkbook({FIXED_TABS[0]: 0}))
+    probe = _probe(report, "Workbook")
+    assert "XSOURCE_WORKBOOK_ID" not in probe.fix.title
+    assert probe.fix.cmd == "xsource workbook redraw"
+
+
+def test_home_needs_you_lists_jobs_waiting_on_operator(report, monkeypatch):
+    monkeypatch.setattr(cockpit, "_status", lambda: report)
+    old = (NOW - dt.timedelta(days=30)).isoformat()
+    report["requests"].upsert(
+        Request(
+            id="r-0001",
+            created_at=old,
+            raw_need="eicr",
+            title="EICR",
+            job_tab="EICR",
+            waiting_on="You: ring 3 firms",
+        )
+    )
+    report["requests"].upsert(
+        Request(id="r-0002", created_at=old, raw_need="fence repair", waiting_on="You: x")
+    )
+    titles = [item.title for item in cockpit.capture_state().needs]
+    assert "EICR: ring 3 firms" in titles
+    assert all("r-000" not in (item.detail or "") for item in cockpit.capture_state().needs)
+    assert not any(t.startswith("Chase: eicr") for t in titles)
+    assert any(t.startswith("Chase: fence repair") for t in titles)

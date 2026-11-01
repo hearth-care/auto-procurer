@@ -9,6 +9,7 @@ prints help so pipes / scheduled jobs keep working. Sub-apps:
 * ``xsource request ...`` — sync, trigger, follow up, and reorder procurement requests.
 * ``xsource invoice ...`` — capture, re-emit, write off, and sync invoice acknowledgements.
 * ``xsource book ...`` — search, import, and publish saved suppliers.
+* ``xsource workbook ...`` — create, redraw and migrate into the lasting workbook.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from xsource.cli.invoice import invoice_app
 from xsource.cli.request import request_app
 from xsource.cli.signals import signals_app
 from xsource.cli.watcher import watcher_app
+from xsource.cli.workbook import workbook_app
 
 app = typer.Typer(
     name="xsource",
@@ -34,6 +36,7 @@ app.add_typer(watcher_app, name="watcher")
 app.add_typer(request_app, name="request")
 app.add_typer(invoice_app, name="invoice")
 app.add_typer(book_app, name="book")
+app.add_typer(workbook_app, name="workbook")
 
 
 @app.callback(invoke_without_command=True)

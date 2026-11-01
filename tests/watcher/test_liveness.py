@@ -65,19 +65,12 @@ class _FakeGateway:
         }
 
 
-class _FakeSheets:
+class _FakeRedraw:
     def __init__(self):
-        self.heartbeats = []
-        self.replies = []
+        self.calls = 0
 
-    def mark_asked(self, sheet_id, *, rank, asked_at, updated_at):
-        pass
-
-    def write_reply(self, sheet_id, *, rank, parsed, received_at, updated_at):
-        self.replies.append(parsed.quote_amount)
-
-    def update_heartbeat(self, sheet_id, checked_at):
-        self.heartbeats.append(checked_at)
+    def __call__(self):
+        self.calls += 1
 
 
 def _make_fixtures():
@@ -121,7 +114,7 @@ def test_two_cycle_liveness(tmp_path):
     suppliers_store = _FakeStore([supplier])
     gmail = _FakeGmail(messages)
     gateway = _FakeGateway()
-    sheets = _FakeSheets()
+    redraw = _FakeRedraw()
     state = ProcessedMessageStore(tmp_path / "watcher.sqlite3")
 
     cycle_results = []
@@ -132,7 +125,7 @@ def test_two_cycle_liveness(tmp_path):
             requests=requests_store,
             suppliers=suppliers_store,
             gmail=gmail,
-            sheets=sheets,
+            redraw_fn=redraw,
             gateway=gateway,
             state=state,
             now=now,
@@ -151,12 +144,9 @@ def test_two_cycle_liveness(tmp_path):
     assert saved.shortlist[0].reply["status"] == "quoted"
     assert saved.shortlist[0].reply["quote_amount"] == 250
 
-    # Heartbeats advanced in both cycles
-    assert len(sheets.heartbeats) == 2
-    assert sheets.heartbeats[0] != sheets.heartbeats[1]
-
-    # Reply written to sheets exactly once
-    assert sheets.replies == [250]
+    # The workbook is redrawn only in the cycle that changed something.
+    assert redraw.calls == 1
+    assert saved.watcher["last_checked_at"] == "2026-06-11T10:01:00+00:00"
 
 
 def test_failed_upsert_does_not_mark_message_processed(tmp_path):
@@ -180,7 +170,7 @@ def test_failed_upsert_does_not_mark_message_processed(tmp_path):
             requests=requests_store,
             suppliers=suppliers_store,
             gmail=_FakeGmail(messages),
-            sheets=_FakeSheets(),
+            redraw_fn=None,
             gateway=_FakeGateway(),
             state=state,
             now=dt.datetime(2026, 6, 11, 10, 0, tzinfo=dt.UTC),

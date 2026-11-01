@@ -194,12 +194,12 @@ def test_request_list_walk_result_via_drive(monkeypatch, tmp_path):
     requests = _online(requests)
     monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (suppliers, requests, invoices))
     host = cockpit_mod._host(agent_mode=True)
-    stream = CockpitDriver(host, keys=["B", "2", "y"]).run()
+    stream = CockpitDriver(host, keys=["B", "3", "y"]).run()
     results = [m for m in stream if m.kind == "walk.result"]
     assert results and results[0].meta["ok"] is True
     lines = results[0].meta["message"].splitlines()
     assert lines[0] == "1 open · 2 total"
-    assert [line.split()[0] for line in lines[1:]] == ["r-0001", "r-0002"]
+    assert lines[1:] == ["fence repair · open · 20 Jun", "annual boiler service · closed · 1 Jun"]
     assert results[0].regions[0].text == results[0].meta["message"]
 
 
@@ -335,3 +335,108 @@ def test_watcher_status_rows_with_quarantine(monkeypatch, tmp_path):
         "r-0002 last_checked=-",
         "rows": ["r-0001 last_checked=2026-09-23T09:58:00+00:00", "r-0002 last_checked=-"],
     }
+
+
+def _job(request_id, title, created, waiting_on, prices=(), status="open", job_tab="Tab"):
+    from xsource.store.models import ShortlistEntry
+
+    return Request(
+        id=request_id,
+        created_at=created,
+        raw_need=title,
+        title=title,
+        status=status,
+        job_tab=job_tab,
+        stage="Quoted",
+        waiting_on=waiting_on,
+        shortlist=[
+            ShortlistEntry(supplier_id=sid, rank=i, latest_price_minor=price)
+            for i, (sid, price) in enumerate(prices, start=1)
+        ],
+    )
+
+
+def _board_stores(tmp_path):
+    suppliers = _online(JsonlStore(tmp_path / "suppliers.jsonl", Supplier))
+    suppliers.upsert(Supplier(id="s-0001", name="Alpha Tree Care"))
+    suppliers.upsert(Supplier(id="s-0002", name="Beta Roofing"))
+    requests = _online(JsonlStore(tmp_path / "requests.jsonl", Request))
+    requests.upsert(
+        _job(
+            "r-1",
+            "Gutters",
+            "2026-10-02T09:00:00+00:00",
+            "Firms",
+            prices=[("s-0001", 45050), ("s-0002", 60000), ("s-0003", None)],
+        )
+    )
+    requests.upsert(_job("r-2", "EICR", "2026-10-01T09:00:00+00:00", "You: ring 3 firms"))
+    requests.upsert(_job("r-3", "Old job", "2026-09-01T09:00:00+00:00", "Nobody", status="closed"))
+    requests.upsert(_job("r-4", "Legacy", "2026-10-03T09:00:00+00:00", "You: x", job_tab=None))
+    return suppliers, requests, _online(JsonlStore(tmp_path / "invoices.jsonl", InvoiceRecord))
+
+
+def test_board_rows_waiting_on_you_first_and_best_price(monkeypatch, tmp_path):
+    from xsource.cli import cockpit as cockpit_mod
+
+    stores = _board_stores(tmp_path)
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: stores)
+    data = cockpit_mod._board_step(_ctx([]), {}).data
+    assert data["rows"] == [
+        cockpit_mod._BOARD_HEADER,
+        "EICR · Quoted · no quotes yet · — · You: ring 3 firms",
+        "Gutters · Quoted · 2 quotes · £450.50 (Alpha Tree Care) · Firms",
+    ]
+    assert data["summary"].splitlines()[0] == "2 open job(s) · 1 waiting on you"
+
+
+def test_board_one_quote_is_singular():
+    from xsource.cli import cockpit as cockpit_mod
+    from xsource.store.models import ShortlistEntry
+
+    job = _job("r-9", "Fence", "2026-10-01T09:00:00+00:00", "Firms")
+    job.shortlist = [ShortlistEntry(supplier_id="s-1", rank=1, latest_price_minor=10000)]
+    assert " · 1 quote · " in cockpit_mod._board_row(job, {"s-1": "Alpha"})
+
+
+def test_request_list_shows_title_and_stage_for_jobs_not_ids(monkeypatch, tmp_path):
+    from xsource.cli import cockpit as cockpit_mod
+
+    store = JsonlStore(tmp_path / "requests.jsonl", Request)
+    store.upsert(_job("r-0001", "EICR", "2026-10-01T09:00:00+00:00", "Firms"))
+    store.upsert(Request(id="r-0002", created_at="2026-10-02T09:00:00+00:00", raw_need="fence"))
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (object(), store, object()))
+    rows = cockpit_mod._request_list_step(_ctx([]), {}).data["rows"]
+    assert rows == ["EICR · Quoted · open · 1 Oct", "fence · open · 2 Oct"]
+
+
+def test_board_whole_pounds_have_no_decimals():
+    from xsource.cli import cockpit as cockpit_mod
+
+    assert cockpit_mod._money(45000) == "£450"
+    assert cockpit_mod._money(45005) == "£450.05"
+
+
+def test_board_walk_result_via_drive(monkeypatch, tmp_path):
+    from clonway_cockpit.agent import CockpitDriver
+
+    from xsource.cli import cockpit as cockpit_mod
+
+    monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
+    suppliers, requests, invoices = _board_stores(tmp_path)
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (suppliers, requests, invoices))
+    stream = CockpitDriver(cockpit_mod._host(agent_mode=True), keys=["B", "1", "y"]).run()
+    results = [m for m in stream if m.kind == "walk.result"]
+    assert results and results[0].meta["ok"] is True
+    lines = results[0].meta["message"].splitlines()
+    assert lines[1] == "Job · Stage · Quotes in · Best price · Waiting on"
+    assert lines[2].startswith("EICR")
+
+
+def test_board_step_never_writes(monkeypatch, tmp_path):
+    from xsource.cli import cockpit as cockpit_mod
+
+    suppliers, requests, invoices = _board_stores(tmp_path)
+    stores = (_NoWriteStore(suppliers), _NoWriteStore(requests), invoices)
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: stores)
+    assert cockpit_mod._board_step(_ctx([]), {}).ok is True

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -15,14 +16,15 @@ from xsource.config import Config
 from xsource.obs import event as obs_event
 from xsource.obs import run_session
 from xsource.runtime import emit_heartbeat
-from xsource.sheet.client import SheetClient
 from xsource.store.files import SyncedFile
 from xsource.store.remote import StoreOffline
 from xsource.watcher.daemon import process_once
 from xsource.watcher.gmail import GmailWatcherClient
 from xsource.watcher.loop import run_loop
 from xsource.watcher.state import ProcessedMessageStore
-from xsource.wiring import build_stores, state_blob
+from xsource.wiring import build_drawn_state_file, build_log_store, build_stores, state_blob
+from xsource.workbook.client import WorkbookClient
+from xsource.workbook.redraw import redraw_workbook
 
 watcher_app = typer.Typer(help="Run or inspect the xsource reply watcher.")
 
@@ -45,11 +47,11 @@ def _gmail_service():
     return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
 
-def _sheet_client() -> SheetClient:
+def _workbook_client() -> WorkbookClient:
     from google.oauth2.credentials import Credentials
 
     creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_SHEETS_TOKEN_PATH"])
-    return SheetClient(creds)
+    return WorkbookClient(creds)
 
 
 def _process_factory(cfg: Config):
@@ -66,7 +68,26 @@ def _process_factory(cfg: Config):
     state_sync.hydrate()
     state = ProcessedMessageStore(state_sync.path)
     gmail = GmailWatcherClient(_gmail_service(), own_addresses=own_addresses)
-    sheets = _sheet_client()
+    redraw_fn: Callable[[], None] | None = None
+    if cfg.workbook_id:
+        workbook_id = cfg.workbook_id
+        workbook_client = _workbook_client()
+        log = build_log_store(cfg)
+        drawn_file = build_drawn_state_file(cfg)
+
+        def _redraw() -> None:
+            redraw_workbook(
+                workbook_id=workbook_id,
+                client=workbook_client,
+                suppliers=suppliers,
+                requests=requests,
+                log=log,
+                drawn_file=drawn_file,
+                now=dt.datetime.now(dt.UTC),
+            )
+
+        redraw_fn = _redraw
+
     gateway = _LazyStructuredGateway()
 
     def _run_once():
@@ -79,17 +100,22 @@ def _process_factory(cfg: Config):
                 detail="store offline at cycle start; skipping message processing",
             )
             raise StoreOffline("store is offline — skipping watcher cycle")
-        report = process_once(
-            requests=requests,
-            suppliers=suppliers,
-            gmail=gmail,
-            sheets=sheets,
-            gateway=gateway,
-            state=state,
-            now=dt.datetime.now(dt.UTC),
-        )
-        state_sync.upload()
-        return report
+        # A failed redraw raises after replies are applied and their messages marked
+        # processed; the state must still go up, or the next hourly --once run (a fresh
+        # container) re-parses and re-applies the same mail. redraw_pending stays set on
+        # the stored requests, so that run retries the redraw.
+        try:
+            return process_once(
+                requests=requests,
+                suppliers=suppliers,
+                gmail=gmail,
+                redraw_fn=redraw_fn,
+                gateway=gateway,
+                state=state,
+                now=dt.datetime.now(dt.UTC),
+            )
+        finally:
+            state_sync.upload()
 
     return _run_once
 

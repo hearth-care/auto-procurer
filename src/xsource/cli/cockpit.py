@@ -43,9 +43,12 @@ from xsource.store.remote import StoreOffline, SyncedStore, get_offline_reason
 from xsource.wiring import (
     build_budget,
     build_directory_state_file,
+    build_drawn_state_file,
+    build_log_store,
     build_research_fns,
     build_stores,
 )
+from xsource.workbook.layout import uk_phone as _uk_phone
 
 _APP_LABEL = "xsource"
 _UK = ZoneInfo("Europe/London")
@@ -66,8 +69,8 @@ _SHELVES: dict[str, str] = {
 }
 
 _REQUEST_NEW_BLAST = BlastRadius(
-    summary="Creates one Google Sheet and saves the request and its suppliers. Does not send or draft any email.",
-    reversible="Sheet can be deleted; store records can be removed by id.",
+    summary="Adds one job tab to the workbook and saves the request and its firms. Does not send or draft any email.",
+    reversible="The tab can be deleted; store records can be removed by id.",
 )
 
 _REQUEST_OUTREACH_BLAST = BlastRadius(
@@ -85,6 +88,12 @@ _WATCHER_STATUS_BLAST = BlastRadius(
 )
 
 _REQUEST_LIST_BLAST = BlastRadius(
+    summary="Writes nothing.",
+    reversible="No write is performed.",
+    writes=False,
+)
+
+_BOARD_BLAST = BlastRadius(
     summary="Writes nothing.",
     reversible="No write is performed.",
     writes=False,
@@ -152,15 +161,8 @@ def _short_need(raw_need: str, width: int) -> str:
     return need if len(need) <= width else need[: width - 1].rstrip() + "…"
 
 
-def _uk_phone(phone: str | None) -> str:
-    digits = "".join(ch for ch in phone or "" if ch.isdigit() or ch == "+")
-    if digits.startswith("+44"):
-        digits = "0" + digits[3:]
-    if len(digits) != 11 or not digits.startswith("0"):
-        return phone or ""
-    if digits.startswith("02"):
-        return f"{digits[:3]} {digits[3:7]} {digits[7:]}"
-    return f"{digits[:5]} {digits[5:]}"
+def _job_title(request) -> str:
+    return request.title or _short_need(request.raw_need, 40)
 
 
 def _request_screen_row(request) -> str:
@@ -169,7 +171,8 @@ def _request_screen_row(request) -> str:
         when = f"{created.day} {created:%b}"
     except ValueError:
         when = request.created_at[:10]
-    return f"{request.id}  {request.status:<7} {when:>6}  {_short_need(request.raw_need, 70)}"
+    stage = f" · {request.stage}" if request.job_tab else ""
+    return f"{_job_title(request)}{stage} · {request.status} · {when}"
 
 
 def _supplier_screen_row(supplier) -> str:
@@ -271,6 +274,13 @@ def _preconditions(ctx: WizardContext) -> list[Precondition]:
         ),
         Precondition("Research budget", budget.allow_new_run(), budget.level()),
         Precondition("Home postcode", bool(cfg.home_postcode), cfg.home_postcode or "missing"),
+        Precondition(
+            "Workbook",
+            bool(cfg.workbook_id),
+            "configured"
+            if cfg.workbook_id
+            else "XSOURCE_WORKBOOK_ID unset; run `xsource workbook init`",
+        ),
     ]
 
 
@@ -444,6 +454,7 @@ def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
         also_try=list(triage_dict.get("also_try", [])),
         email_vars=dict(triage_dict["email_vars"]),
         place_type=triage_dict.get("place_type"),
+        short_label=triage_dict.get("short_label", ""),
     )
     book_suppliers = find_matches(
         suppliers.all(),
@@ -483,19 +494,29 @@ def _research_step(ctx: WizardContext, bag: dict) -> StepResult:
 
 
 def _review_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
-    if not confirm_apply(ctx, prompt="Create request sheet?", equivalent_cli=None):  # type: ignore[arg-type]
-        return StepResult(ok=False, message="Apply declined.")
-    from google.oauth2.credentials import Credentials
+    from xsource.walks.request_new import apply_request, shortlist_preview_rows
+    from xsource.workbook.client import WorkbookClient
+    from xsource.workbook.redraw import add_job_tab, forget_drawn, redraw_workbook
 
-    from xsource.walks.request_new import apply_request
+    ctx.console.print("[bold]Shortlist[/bold]")
+    for line in shortlist_preview_rows(bag["result"].shortlist):
+        ctx.console.print(f"  {line}")
+    if not confirm_apply(ctx, prompt="Create job tab?", equivalent_cli=None):  # type: ignore[arg-type]
+        return StepResult(ok=False, message="Apply declined.")
 
     cfg = Config.from_env()
+    workbook_id = cfg.workbook_id or ""
     suppliers, requests_, _invoices = build_stores(cfg)
+    log = build_log_store(cfg)
+    client = WorkbookClient(
+        Credentials.from_authorized_user_file(os.environ["XSOURCE_SHEETS_TOKEN_PATH"])
+    )
+    now = dt.datetime.now(dt.UTC)
 
-    def create_sheet(title: str, values: list[list[str]]) -> tuple[str, str]:
-        creds = Credentials.from_authorized_user_file(os.environ["XSOURCE_SHEETS_TOKEN_PATH"])
-        return SheetClient(creds).create_request_sheet(
-            title, values, cfg.drive_folder_id, cfg.staff_share_group
+    def add_tab(request: Request) -> tuple[str, int]:
+        # Index 3 puts the newest job first, after the fixed tabs.
+        return add_job_tab(
+            workbook_id=workbook_id, client=client, request=request, requests=requests_, index=3
         )
 
     request = apply_request(
@@ -505,14 +526,27 @@ def _review_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
         result=bag["result"],
         suppliers=suppliers,
         requests=requests_,
-        create_sheet_fn=create_sheet,
-        now=dt.datetime.now(),
+        add_job_tab_fn=add_tab,
+        log=log,
+        now=now,
     )
+    drawn_file = build_drawn_state_file(cfg)
+    forget_drawn(drawn_file, request.job_tab or "")
+    redraw_workbook(
+        workbook_id=workbook_id,
+        client=client,
+        suppliers=suppliers,
+        requests=requests_,
+        log=log,
+        drawn_file=drawn_file,
+        now=now,
+    )
+    url = f"https://docs.google.com/spreadsheets/d/{workbook_id}/edit#gid={request.job_tab_gid}"
     return StepResult(
         ok=True,
         data={
-            "summary": f"Created {request.id}.",
-            "result_links": [("Sheet", request.sheet_url or "")],
+            "summary": f"Created {request.id} as tab {request.job_tab}.",
+            "result_links": [("Job tab", url)],
         },
     )
 
@@ -561,7 +595,7 @@ def _outreach_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
         request_id=bag["request_id"],
         suppliers=suppliers,
         requests=requests_,
-        draft_client=SafeOutreachClient(service),
+        draft_client=SafeOutreachClient(service, cfg.mail_identity()),
         now=dt.datetime.now(dt.UTC),
         gateway=_AnthropicStructuredGateway(Config.from_env().model_chain),
     )
@@ -587,8 +621,8 @@ _request_outreach_handler = make_walk_handler(
 
 
 _TRIGGER_BLAST = BlastRadius(
-    summary="Creates one Google Sheet and writes request + suppliers to the xsource store. Does not send or draft any email.",
-    reversible="Sheet can be deleted; store records can be removed by id.",
+    summary="Adds one job tab to the workbook and writes request + suppliers to the xsource store. Does not send or draft any email.",
+    reversible="The tab can be deleted; store records can be removed by id.",
 )
 
 _FOLLOWUP_BLAST = BlastRadius(
@@ -597,8 +631,8 @@ _FOLLOWUP_BLAST = BlastRadius(
 )
 
 _REORDER_BLAST = BlastRadius(
-    summary="Creates one Google Sheet and writes a reorder request + suppliers to the xsource store. Does not send or draft any email.",
-    reversible="Sheet can be deleted; store records can be removed by id.",
+    summary="Adds one job tab to the workbook and writes a reorder request + suppliers to the xsource store. Does not send or draft any email.",
+    reversible="The tab can be deleted; store records can be removed by id.",
 )
 
 
@@ -821,7 +855,7 @@ def _followup_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     result = create_followup_draft(
         request,
         supplier,
-        draft_client=SafeOutreachClient(service),
+        draft_client=SafeOutreachClient(service, cfg.mail_identity()),
         operator_name=cfg.operator_display_name,
         now=dt.datetime.now(dt.UTC),
     )
@@ -947,6 +981,57 @@ def _request_list_step(ctx: WizardContext, bag: dict) -> StepResult:
     rows = [_request_screen_row(request) for request in records]
     summary = f"{open_n} open · {total_n} total{_quarantine_suffix(requests_)}"
     return StepResult(ok=True, data={"summary": _with_rows(summary, rows), "rows": rows})
+
+
+def _money(minor: int) -> str:
+    pounds, pence = divmod(minor, 100)
+    return f"£{pounds:,}" if pence == 0 else f"£{pounds:,}.{pence:02d}"
+
+
+_BOARD_HEADER = "Job · Stage · Quotes in · Best price · Waiting on"
+
+
+def _board_row(request, firm_names: dict[str, str]) -> str:
+    priced = [e for e in request.shortlist if e.latest_price_minor is not None]
+    if priced:
+        cheapest = min(priced, key=lambda e: e.latest_price_minor)
+        firm = firm_names.get(cheapest.supplier_id, cheapest.supplier_id)
+        best = f"{_money(cheapest.latest_price_minor)} ({firm})"
+    else:
+        best = "—"
+    quotes = "no quotes yet" if not priced else f"{len(priced)} quote{'s' * (len(priced) > 1)}"
+    return f"{_job_title(request)} · {request.stage} · {quotes} · {best} · {request.waiting_on}"
+
+
+def _board_step(ctx: WizardContext, bag: dict) -> StepResult:
+    suppliers, requests_, _invoices = _walk_stores(ctx)
+    firm_names = {s.id: s.name for s in suppliers.all()}
+    jobs = [r for r in requests_.all() if r.status == "open" and r.job_tab]
+    jobs.sort(key=lambda r: (not r.waiting_on.startswith("You:"), _newest_first(r)))
+    rows = [_BOARD_HEADER, *(_board_row(request, firm_names) for request in jobs)]
+    waiting = sum(1 for r in jobs if r.waiting_on.startswith("You:"))
+    summary = f"{len(jobs)} open job(s) · {waiting} waiting on you{_quarantine_suffix(requests_)}"
+    return StepResult(ok=True, data={"summary": _with_rows(summary, rows), "rows": rows})
+
+
+def _newest_first(request) -> float:
+    try:
+        created = dt.datetime.fromisoformat(request.created_at)
+    except ValueError:
+        return 0.0
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=dt.UTC)
+    return -created.timestamp()
+
+
+_board_handler = make_walk_handler(
+    title="Board",
+    steps=[Step(label="Board", run=_board_step)],
+    blast_radius=_BOARD_BLAST,
+    preconditions_fn=_readonly_preconditions,
+    equivalent_cli="",  # cockpit-only page; no CLI twin
+    total=2,
+)
 
 
 def _book_search_term_step(ctx: WizardContext, bag: dict) -> StepResult:
@@ -1261,6 +1346,18 @@ def register_all() -> None:
     """Register xsource's cockpit capabilities."""
     register_capability(
         CapabilitySpec(
+            key="board",
+            shelf="B",
+            title="Board",
+            summary="Open jobs: stage, quotes in, best price, who it is waiting on. Changes nothing.",
+            equivalent_cli="",
+            run=_board_handler,
+            blast_radius=_BOARD_BLAST,
+            money_movement=False,
+        )
+    )
+    register_capability(
+        CapabilitySpec(
             key="request.new",
             shelf="A",
             title="New request",
@@ -1451,11 +1548,22 @@ def capture_state() -> CockpitState:
             age_days = (now - created.astimezone(dt.UTC)).days
         except ValueError:
             age_days = 0
+        if request.job_tab and request.waiting_on.startswith("You:"):
+            needs.append(
+                NeedsItem(
+                    title=f"{_job_title(request)}: "
+                    f"{request.waiting_on.removeprefix('You:').strip()}",
+                    detail="waiting on you",
+                    level="warn",
+                    capability_key="board",
+                )
+            )
+            continue
         if age_days >= cfg.chase_after_days:
             needs.append(
                 NeedsItem(
-                    title=f"Chase: {_short_need(request.raw_need, 40)}",
-                    detail=f"open {age_days} days · {request.id}",
+                    title=f"Chase: {_job_title(request)}",
+                    detail=f"open {age_days} days",
                     level="warn",
                     capability_key="request.list",
                 )
@@ -1645,6 +1753,72 @@ def _probe_with_fix(*, name: str, level: str, detail: str, fix: Fix) -> Probe:
     return Probe(name=name, level=level, detail=detail, fix=None if level == "ok" else fix)
 
 
+def _workbook_client():
+    from xsource.workbook.client import WorkbookClient
+
+    return WorkbookClient(
+        Credentials.from_authorized_user_file(os.environ["XSOURCE_SHEETS_TOKEN_PATH"])
+    )
+
+
+def _workbook_failure(exc: Exception) -> tuple[str, Fix]:
+    if isinstance(exc, KeyError) and exc.args:
+        return (
+            f"Sheets credentials not set ({exc.args[0]})",
+            Fix(
+                f"Set {exc.args[0]} to the Sheets login file",
+                f"export {exc.args[0]}=<path to the Sheets login file>",
+                run=None,
+            ),
+        )
+    message = str(exc) or "no further detail"
+    return (
+        f"Could not read the workbook: {type(exc).__name__}: {message}",
+        Fix(
+            "Check the Sheets login still works and the workbook is shared with it",
+            "",
+            run=None,
+        ),
+    )
+
+
+def _workbook_probe(cfg: Config) -> Probe:
+    if not cfg.workbook_id:
+        return _probe_with_fix(
+            name="Workbook",
+            level="warn",
+            detail="XSOURCE_WORKBOOK_ID unset",
+            fix=Fix(
+                "Run xsource workbook init and set XSOURCE_WORKBOOK_ID",
+                "xsource workbook init",
+                run=None,
+            ),
+        )
+    from xsource.workbook.contract import FIXED_TABS
+
+    try:
+        tabs = _workbook_client().tab_ids(cfg.workbook_id)
+    except Exception as exc:
+        detail, fix = _workbook_failure(exc)
+        return _probe_with_fix(name="Workbook", level="error", detail=detail, fix=fix)
+    missing = [tab for tab in FIXED_TABS if tab not in tabs]
+    # No command recreates a fixed tab in an existing workbook; redraw only writes into tabs
+    # that are already there.
+    fix = Fix(
+        "Add the missing tab(s) to the Sheet by hand with exactly these names, "
+        "then run xsource workbook redraw",
+        "xsource workbook redraw",
+        run=None,
+    )
+    if missing:
+        return _probe_with_fix(
+            name="Workbook", level="error", detail="missing tab(s): " + ", ".join(missing), fix=fix
+        )
+    return _probe_with_fix(
+        name="Workbook", level="ok", detail=f"{len(tabs)} tab(s) · fixed tabs present", fix=fix
+    )
+
+
 def doctor_build_probes(report: object) -> list[Probe]:
     cfg: Config = report["cfg"]  # type: ignore[index]
     suppliers = report["suppliers"]  # type: ignore[index]
@@ -1721,6 +1895,7 @@ def doctor_build_probes(report: object) -> list[Probe]:
             detail=store_detail,
             fix=None,
         ),
+        _workbook_probe(cfg),
         _reply_watcher_probe(requests_, request_records, now),
         _pending_signals_probe(cfg, suppliers, requests_, invoices, now),
     ]
