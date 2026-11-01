@@ -10,6 +10,9 @@ from xsource.workbook.stages import record_price
 
 _DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d %b %Y", "%d %B %Y", "%d/%m/%y")
 
+# firm (Black book: "kind|firm") -> header -> the string last drawn into that cell.
+TabSnapshot = dict[str, dict[str, str]]
+
 
 def parse_money_minor(text: str) -> int | None:
     cleaned = re.sub(r"[£,\s]", "", text or "")
@@ -19,8 +22,12 @@ def parse_money_minor(text: str) -> int | None:
     return int(whole) * 100 + int(pence.ljust(2, "0") or 0)
 
 
+def _plain(text: str) -> str:
+    return (text or "").strip().lstrip("'").strip()
+
+
 def _phone(cell: str) -> str:
-    return uk_phone(cell.strip().lstrip("'").strip())
+    return uk_phone(_plain(cell))
 
 
 def _parse_date(text: str) -> str | None:
@@ -32,8 +39,47 @@ def _parse_date(text: str) -> str | None:
     return None
 
 
+def _number(text: str) -> float | None:
+    try:
+        return float(re.sub(r"[£,\s]", "", text))
+    except ValueError:
+        return None
+
+
+def _same(cell: str, drawn: str) -> bool:
+    a, b = _plain(cell), _plain(drawn)
+    if a == b:
+        return True
+    # Sheets reformats what we draw ("24.5" comes back "24.50"), so numbers compare by value.
+    na, nb = _number(a), _number(b)
+    return na is not None and na == nb
+
+
+def _edited(cell: str, drawn: dict[str, str], header: str) -> bool:
+    return bool(_plain(cell)) and not _same(cell, drawn.get(header, ""))
+
+
 def _cells(row: list[str], index: dict[str, int]) -> dict[str, str]:
     return {name: (row[i].strip() if i < len(row) else "") for name, i in index.items()}
+
+
+def snapshot_rows(rows: list[list[str]], key) -> TabSnapshot:
+    if not rows:
+        return {}
+    header = rows[0]
+    out: TabSnapshot = {}
+    for raw in rows[1:]:
+        cells = {h: (raw[i] if i < len(raw) else "") for i, h in enumerate(header)}
+        out[key(cells)] = cells
+    return out
+
+
+def job_key(cells: dict[str, str]) -> str:
+    return cells["Firm"].casefold()
+
+
+def black_book_key(cells: dict[str, str]) -> str:
+    return f"{cells['Kind of job']}|{cells['Firm']}".casefold()
 
 
 def read_job_edits(
@@ -42,8 +88,9 @@ def read_job_edits(
     suppliers: dict[str, Supplier],
     *,
     on: dt.date,
+    drawn: TabSnapshot | None,
 ) -> list[str]:
-    if not rows:
+    if not rows or not drawn:
         return []
     tab = request.job_tab or request.title or request.id
     index = {name: i for i, name in enumerate(rows[0])}
@@ -68,52 +115,60 @@ def read_job_edits(
             warnings.append(f"{tab}: no firm called '{firm}' on this job")
             continue
         entry, supplier = found
+        was = drawn.get(firm.casefold(), {})
 
-        if cell.get("Contact") and cell["Contact"] != entry.contact_name:
+        def changed(header: str, cell=cell, was=was) -> bool:
+            return _edited(cell.get(header, ""), was, header)
+
+        if changed("Contact"):
             entry.contact_name = cell["Contact"]
-        if cell.get("Phone"):
-            phone = _phone(cell["Phone"])
-            if phone != uk_phone(supplier.phone):
-                supplier.phone = phone
-        if cell.get("Email") and cell["Email"] != supplier.email:
+        if changed("Phone"):
+            supplier.phone = _phone(cell["Phone"])
+        if changed("Email"):
             supplier.email = cell["Email"]
-        if cell.get("Notes") and cell["Notes"] != entry.notes:
+        if changed("Notes"):
             entry.notes = cell["Notes"]
 
         original_stage = entry.stage
         via = entry.last_contact.get("via") or "email"
-        first = parse_money_minor(cell.get("First price", ""))
-        latest = parse_money_minor(cell.get("Latest price", ""))
         if request.energy:
             for header, key in (
                 ("Term", "term"),
                 ("Unit rate", "unit_rate"),
                 ("Standing charge", "standing_charge"),
             ):
-                if cell.get(header) and cell[header] != str(entry.energy_quote.get(key, "")):
+                if changed(header):
                     entry.energy_quote[key] = cell[header]
-            latest = parse_money_minor(cell.get("Est. yearly cost", ""))
-        if first is not None and first != entry.first_price_minor:
-            entry.first_price_minor = first
-        if latest is not None and latest != entry.latest_price_minor:
-            record_price(entry, latest, on=on, via=via)
+            latest_header = "Est. yearly cost"
+        else:
+            latest_header = "Latest price"
+            if changed("First price") and (m := parse_money_minor(cell["First price"])) is not None:
+                entry.first_price_minor = m
+        if changed(latest_header) and (m := parse_money_minor(cell[latest_header])) is not None:
+            record_price(entry, m, on=on, via=via)
 
-        stage = cell.get("Stage", "")
-        if stage and stage != original_stage:
-            if stage in contract.FIRM_STAGES:
-                entry.stage = stage
+        if changed("Stage"):
+            if cell["Stage"] in contract.FIRM_STAGES:
+                if cell["Stage"] != original_stage:
+                    entry.stage = cell["Stage"]
             else:
-                warnings.append(f"{tab}: '{stage}' is not a stage, ignored for {firm}")
+                warnings.append(f"{tab}: '{cell['Stage']}' is not a stage, ignored for {firm}")
     return warnings
 
 
-def read_black_book_edits(rows: list[list[str]], suppliers: list[Supplier]) -> list[str]:
-    if not rows:
+def read_black_book_edits(
+    rows: list[list[str]], suppliers: list[Supplier], *, drawn: TabSnapshot | None
+) -> list[str]:
+    if not rows or not drawn:
         return []
     index = {name: i for i, name in enumerate(rows[0])}
     if "Firm" not in index:
         return ["Black book: no Firm column, edits not read"]
-    wanted = {n: index[n] for n in ("Firm", *contract.BLACK_BOOK_HAND_EDITABLE) if n in index}
+    wanted = {
+        n: index[n]
+        for n in ("Kind of job", "Firm", *contract.BLACK_BOOK_HAND_EDITABLE)
+        if n in index
+    }
     by_name = {s.name.casefold(): s for s in suppliers}
 
     warnings: list[str] = []
@@ -126,28 +181,30 @@ def read_black_book_edits(rows: list[list[str]], suppliers: list[Supplier]) -> l
         if supplier is None:
             warnings.append(f"Black book: no firm called '{firm}'")
             continue
-        if cell.get("Contact") and cell["Contact"] != supplier.contact_name:
+        was = drawn.get(f"{cell.get('Kind of job', '')}|{firm}".casefold(), {})
+
+        def changed(header: str, cell=cell, was=was) -> bool:
+            return _edited(cell.get(header, ""), was, header)
+
+        if changed("Contact"):
             supplier.contact_name = cell["Contact"]
-        if cell.get("Phone"):
-            phone = _phone(cell["Phone"])
-            if phone != uk_phone(supplier.phone):
-                supplier.phone = phone
-        if cell.get("Email") and cell["Email"] != supplier.email:
+        if changed("Phone"):
+            supplier.phone = _phone(cell["Phone"])
+        if changed("Email"):
             supplier.email = cell["Email"]
         if cell.get("Contract ends"):
             day = _parse_date(cell["Contract ends"])
             if day is None:
-                warnings.append(
-                    f"Black book: '{cell['Contract ends']}' is not a date, ignored for {firm}"
-                )
-            else:
+                if not _same(cell["Contract ends"], was.get("Contract ends", "")):
+                    warnings.append(
+                        f"Black book: '{cell['Contract ends']}' is not a date, ignored for {firm}"
+                    )
+            elif day != _parse_date(was.get("Contract ends", "")):
                 supplier.contract_ends = day
-        if cell.get("Notice to give"):
-            digits = cell["Notice to give"]
-            if digits.isdigit():
-                supplier.notice_days = int(digits)
+        if changed("Notice to give"):
+            days = cell["Notice to give"]
+            if days.isdigit():
+                supplier.notice_days = int(days)
             else:
-                warnings.append(
-                    f"Black book: '{digits}' is not a number of days, ignored for {firm}"
-                )
+                warnings.append(f"Black book: '{days}' is not a number of days, ignored for {firm}")
     return warnings

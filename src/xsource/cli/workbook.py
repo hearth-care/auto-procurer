@@ -9,7 +9,7 @@ import typer
 
 from xsource.config import Config
 from xsource.obs import run_session
-from xsource.wiring import build_log_store, build_stores
+from xsource.wiring import build_drawn_state_file, build_log_store, build_stores
 from xsource.workbook.client import WorkbookClient
 from xsource.workbook.redraw import migrate_open_requests, redraw_workbook, unmigrated
 
@@ -67,6 +67,7 @@ def redraw() -> None:
             suppliers=suppliers,
             requests=requests,
             log=build_log_store(cfg),
+            drawn_file=build_drawn_state_file(cfg),
             now=dt.datetime.now(dt.UTC),
         )
     typer.echo(report)
@@ -85,7 +86,7 @@ def migrate(
             typer.echo(f"{r.id}\t{r.sheet_id}\twould move into the workbook")
         typer.echo(f"{len(pending)} open request(s) to move; run again with --apply")
         return
-    client, log = _workbook_client(), build_log_store(cfg)
+    client, log, drawn_file = _workbook_client(), build_log_store(cfg), build_drawn_state_file(cfg)
     now = dt.datetime.now(dt.UTC)
     with run_session(trigger="workbook.migrate", args={}):
         for line in migrate_open_requests(
@@ -95,6 +96,7 @@ def migrate(
             suppliers=suppliers,
             requests=requests,
             log=log,
+            drawn_file=drawn_file,
             now=now,
         ):
             typer.echo(line)
@@ -104,6 +106,7 @@ def migrate(
             suppliers=suppliers,
             requests=requests,
             log=log,
+            drawn_file=drawn_file,
             now=now,
         )
     typer.echo(report)

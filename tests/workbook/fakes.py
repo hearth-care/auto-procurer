@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from xsource.workbook.client import TabMissing
+
 
 class FakeStore:
     def __init__(self, records=()):
@@ -21,7 +23,8 @@ class FakeStore:
 
 
 class FakeWorkbookClient:
-    def __init__(self, tabs=None, ids=None):
+    def __init__(self, tabs=None, ids=None, missing=()):
+        self.missing = set(missing)
         self.tabs = dict(tabs or {})
         self.ids = dict(ids or {"Board": 0, "Black book": 1, "Log": 2})
         self.calls: list[tuple[str, str]] = []
@@ -30,7 +33,10 @@ class FakeWorkbookClient:
 
     def read_tab(self, wb, name):
         self.calls.append(("read_tab", name))
-        return self.tabs.get(name, [])
+        if name in self.missing:
+            raise TabMissing(name)
+        # A real sheet shows what was last drawn until somebody edits it.
+        return self.tabs.get(name, self.written.get(name, []))
 
     def write_tab(self, wb, name, rows):
         self.calls.append(("write_tab", name))

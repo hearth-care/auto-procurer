@@ -36,6 +36,10 @@ def _span(gid: int, headers: tuple[str, ...], first: str, last: str | None = Non
     }
 
 
+class TabMissing(Exception):
+    pass
+
+
 class WorkbookClient:
     def __init__(self, creds):
         from googleapiclient.discovery import build
@@ -99,16 +103,24 @@ class WorkbookClient:
         ).execute()
 
     def read_tab(self, workbook_id: str, name: str) -> list[list[str]]:
-        got = (
-            self.sheets.spreadsheets()
-            .values()
-            .get(
-                spreadsheetId=workbook_id,
-                range=_quoted(name),
-                valueRenderOption="FORMATTED_VALUE",
+        from googleapiclient.errors import HttpError
+
+        try:
+            got = (
+                self.sheets.spreadsheets()
+                .values()
+                .get(
+                    spreadsheetId=workbook_id,
+                    range=_quoted(name),
+                    valueRenderOption="FORMATTED_VALUE",
+                )
+                .execute()
             )
-            .execute()
-        )
+        except HttpError as exc:
+            status = getattr(exc.resp, "status", None)
+            if status == 404 or (status == 400 and "Unable to parse range" in str(exc)):
+                raise TabMissing(name) from exc
+            raise
         return got.get("values", [])
 
     def format_tab(self, workbook_id: str, gid: int, kind: Kind) -> None:

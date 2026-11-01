@@ -1,15 +1,24 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 from typing import Any
 
 from xsource.sheet.client import SheetClient
 from xsource.sheet.sync import apply_sheet_rows
+from xsource.store.files import SyncedFile
 from xsource.store.models import LogEntry, Request
 from xsource.workbook import layout
-from xsource.workbook.client import WorkbookClient
+from xsource.workbook.client import TabMissing, WorkbookClient
 from xsource.workbook.contract import BOARD_COLUMNS
-from xsource.workbook.readback import read_black_book_edits, read_job_edits
+from xsource.workbook.readback import (
+    TabSnapshot,
+    black_book_key,
+    job_key,
+    read_black_book_edits,
+    read_job_edits,
+    snapshot_rows,
+)
 from xsource.workbook.stages import advance, record_price
 
 
@@ -24,37 +33,74 @@ def _log(log, request: Request | None, text: str, now: dt.datetime) -> None:
     )
 
 
+def _load_drawn(drawn_file: SyncedFile) -> dict[str, TabSnapshot]:
+    drawn_file.hydrate()
+    if not drawn_file.path.exists():
+        return {}
+    return json.loads(drawn_file.path.read_text())
+
+
+def _save_drawn(drawn_file: SyncedFile, drawn: dict[str, TabSnapshot]) -> None:
+    drawn_file.path.write_text(json.dumps(drawn, ensure_ascii=False))
+    drawn_file.upload()
+
+
 def redraw_workbook(
-    *, workbook_id: str, client: WorkbookClient, suppliers, requests, log, now: dt.datetime
+    *,
+    workbook_id: str,
+    client: WorkbookClient,
+    suppliers,
+    requests,
+    log,
+    drawn_file: SyncedFile,
+    now: dt.datetime,
 ) -> dict[str, Any]:
     all_suppliers = suppliers.all()
     by_id = {s.id: s for s in all_suppliers}
     names = {s.id: s.name for s in all_suppliers}
     before_suppliers = {s.id: s.to_dict() for s in all_suppliers}
     all_requests = requests.all()
-    jobs = [r for r in all_requests if r.job_tab]
+    drawn = _load_drawn(drawn_file)
+    jobs: list[Request] = []
     warnings: list[str] = []
 
-    for r in jobs:
+    for r in (r for r in all_requests if r.job_tab):
+        tab = r.job_tab or ""
         before = r.to_dict()
-        rows = client.read_tab(workbook_id, r.job_tab or "")
-        warnings.extend(read_job_edits(rows, r, by_id, on=now.date()))
+        try:
+            rows = client.read_tab(workbook_id, tab)
+        except TabMissing:
+            warnings.append(f"{tab}: tab missing, not redrawn")
+            continue
+        jobs.append(r)
+        warnings.extend(read_job_edits(rows, r, by_id, on=now.date(), drawn=drawn.get(tab)))
         for line in advance(r, names=names):
             _log(log, r, line, now)
         if r.to_dict() != before:
             requests.upsert(r)
 
     warnings.extend(
-        read_black_book_edits(client.read_tab(workbook_id, "Black book"), all_suppliers)
+        read_black_book_edits(
+            client.read_tab(workbook_id, "Black book"), all_suppliers, drawn=drawn.get("Black book")
+        )
     )
     for s in all_suppliers:
         if s.to_dict() != before_suppliers[s.id]:
             suppliers.upsert(s)
 
+    # The snapshot is saved after each tab so a failed later write cannot leave an earlier,
+    # already-redrawn tab compared against a stale snapshot (which would read as an edit).
     for r in jobs:
-        client.write_tab(workbook_id, r.job_tab or "", layout.job_tab_rows(r, by_id))
+        tab = r.job_tab or ""
+        rows = layout.job_tab_rows(r, by_id)
+        client.write_tab(workbook_id, tab, rows)
+        drawn[tab] = snapshot_rows(rows, job_key)
+        _save_drawn(drawn_file, drawn)
     client.write_tab(workbook_id, "Board", [list(BOARD_COLUMNS), *layout.board_rows(all_requests)])
-    client.write_tab(workbook_id, "Black book", layout.black_book_rows(all_suppliers, all_requests))
+    rows = layout.black_book_rows(all_suppliers, all_requests)
+    client.write_tab(workbook_id, "Black book", rows)
+    drawn["Black book"] = snapshot_rows(rows, black_book_key)
+    _save_drawn(drawn_file, drawn)
     client.write_tab(
         workbook_id, "Log", layout.log_rows(log.all(), {r.id: r for r in all_requests})
     )
@@ -73,8 +119,10 @@ def migrate_open_requests(
     suppliers,
     requests,
     log,
+    drawn_file: SyncedFile,
     now: dt.datetime,
 ) -> list[str]:
+    drawn = _load_drawn(drawn_file)
     moved: list[str] = []
     for r in unmigrated(requests):
         rows = legacy_sheets.read_request_rows(r.sheet_id or "")
@@ -97,6 +145,9 @@ def migrate_open_requests(
         r.job_tab_gid = client.ensure_tab(workbook_id, r.job_tab, index=len(existing))
         client.format_tab(workbook_id, r.job_tab_gid, "energy" if r.energy else "job")
         requests.upsert(r)
+        # A reused tab name must not inherit a deleted tab's last-drawn cells.
+        if drawn.pop(r.job_tab, None) is not None:
+            _save_drawn(drawn_file, drawn)
         _log(log, r, "Moved from its old Sheet", now)
         moved.append(f"{r.id} -> {r.job_tab}")
     return moved

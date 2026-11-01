@@ -270,3 +270,42 @@ def test_log_is_fully_protected():
     prot = _protected(_requests(sheets))
     assert [_cols(p["range"]) for p in prot] == [(0, 3)]
     assert prot[0]["warningOnly"] is True
+
+
+class _Raises:
+    def __init__(self, exc):
+        self.exc = exc
+
+    def execute(self):
+        raise self.exc
+
+
+def _http_error(status, reason):
+    from googleapiclient.errors import HttpError
+
+    return HttpError(type("Resp", (), {"status": status, "reason": reason})(), reason.encode())
+
+
+def test_read_tab_signals_a_missing_tab_and_lets_other_errors_through():
+    import pytest
+
+    from xsource.workbook.client import TabMissing
+
+    c, sheets, _ = _client()
+    sheets.values = lambda: type(
+        "V", (), {"get": lambda self, **kw: _Raises(_http_error(400, "Unable to parse range: X"))}
+    )()
+    with pytest.raises(TabMissing):
+        c.read_tab("wb1", "X")
+    sheets.values = lambda: type(
+        "V", (), {"get": lambda self, **kw: _Raises(_http_error(404, "gone"))}
+    )()
+    with pytest.raises(TabMissing):
+        c.read_tab("wb1", "X")
+    sheets.values = lambda: type(
+        "V", (), {"get": lambda self, **kw: _Raises(_http_error(500, "boom"))}
+    )()
+    from googleapiclient.errors import HttpError
+
+    with pytest.raises(HttpError):
+        c.read_tab("wb1", "X")

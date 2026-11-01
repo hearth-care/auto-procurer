@@ -61,7 +61,7 @@ def test_sync_all_redraws_the_workbook_when_one_is_configured(monkeypatch, tmp_p
     assert ("write_tab", "Board") in client.calls
 
 
-def test_migrate_apply_moves_requests_then_redraws(monkeypatch):
+def test_migrate_apply_moves_requests_then_redraws(monkeypatch, tmp_path):
     class Legacy:
         def read_request_rows(self, sheet_id):
             return []
@@ -78,6 +78,7 @@ def test_migrate_apply_moves_requests_then_redraws(monkeypatch):
     suppliers = FakeStore([Supplier(id="s-1", name="Acme Testing")])
     monkeypatch.setenv("XSOURCE_WORKBOOK_ID", "wb")
     monkeypatch.setattr(cli_workbook, "build_stores", lambda cfg: (suppliers, requests, None))
+    monkeypatch.setenv("XSOURCE_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(cli_workbook, "build_log_store", lambda cfg: FakeStore())
     monkeypatch.setattr(cli_workbook, "_workbook_client", lambda: client)
     monkeypatch.setattr(cli_workbook, "_legacy_sheets", lambda: Legacy())

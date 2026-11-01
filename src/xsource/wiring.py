@@ -49,6 +49,13 @@ def build_log_store(cfg: Config) -> SyncedStore:
     return SyncedStore(Path(cfg.state_dir), "log.jsonl", LogEntry, state_blob(cfg, "log.jsonl"))
 
 
+def build_drawn_state_file(cfg: Config) -> SyncedFile:
+    return SyncedFile(
+        Path(cfg.state_dir) / "workbook-drawn.json",
+        blob=state_blob(cfg, "workbook-drawn.json"),
+    )
+
+
 def build_directory_state_file(cfg: Config) -> SyncedFile:
     return SyncedFile(
         Path(cfg.state_dir) / "directory-sheet.json",

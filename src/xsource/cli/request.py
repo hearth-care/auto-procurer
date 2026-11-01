@@ -103,7 +103,7 @@ def sync_all() -> None:
             now = dt.datetime.now(dt.UTC)
             if cfg.workbook_id:
                 from xsource.cli.workbook import _workbook_client
-                from xsource.wiring import build_log_store
+                from xsource.wiring import build_drawn_state_file, build_log_store
                 from xsource.workbook.redraw import redraw_workbook
 
                 report = redraw_workbook(
@@ -112,6 +112,7 @@ def sync_all() -> None:
                     suppliers=suppliers,
                     requests=requests,
                     log=build_log_store(cfg),
+                    drawn_file=build_drawn_state_file(cfg),
                     now=now,
                 )
             else:
