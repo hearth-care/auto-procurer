@@ -12,7 +12,7 @@ def build_followup_draft(
     request: Request,
     supplier: Supplier,
     *,
-    operator_name: str = "Milo",
+    operator_name: str,
 ) -> dict[str, str]:
     if not supplier.email:
         raise ValueError(f"supplier {supplier.id} has no email")
@@ -43,7 +43,7 @@ def create_followup_draft(
     *,
     draft_client,
     now: dt.datetime,
-    operator_name: str = "Milo",
+    operator_name: str,
 ) -> dict[str, str]:
     draft = build_followup_draft(request, supplier, operator_name=operator_name)
     entry = next((item for item in request.shortlist if item.supplier_id == supplier.id), None)

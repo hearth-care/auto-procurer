@@ -143,7 +143,10 @@ shelf (G) at cockpit start.
 | `XSOURCE_MAX_BACKOFF_SECONDS` | no | `300` | Watcher error-backoff ceiling |
 | `XSOURCE_BREAKER_THRESHOLD` | no | `10` | Watcher circuit-breaker threshold |
 | `XSOURCE_RESEARCH_MODEL` | no | — | Single-model fallback when `XSOURCE_MODEL_CHAIN` is unset |
-| `XSOURCE_OPERATOR_DISPLAY_NAME` | no | `Milo` | Name signed into follow-up drafts |
+| `XSOURCE_OPERATOR_DISPLAY_NAME` | no | `Gareth` | Name signed into drafts |
+| `XSOURCE_HOME_TOWN` | no | — | Town named in drafts when triage finds none |
+| `XSOURCE_MAILBOX_ADDRESS` | no | the live mailbox | From address on drafts; it and the Gmail credentials must point at the same mailbox and are switched together |
+| `XSOURCE_MAILBOX_DISPLAY_NAME` | no | operator name | From display name on drafts |
 | `COMPANIES_HOUSE_API_KEY` | no | — | Enables the Companies House sanity check during research |
 
 In Cloud Run, secrets are mounted as files; the `*_TOKEN_PATH` and `*_FILE`

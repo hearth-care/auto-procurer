@@ -586,7 +586,7 @@ def _outreach_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
         request_id=bag["request_id"],
         suppliers=suppliers,
         requests=requests_,
-        draft_client=SafeOutreachClient(service),
+        draft_client=SafeOutreachClient(service, cfg.mail_identity()),
         now=dt.datetime.now(dt.UTC),
         gateway=_AnthropicStructuredGateway(Config.from_env().model_chain),
     )
@@ -846,7 +846,7 @@ def _followup_apply_step(ctx: WizardContext, bag: dict) -> StepResult:
     result = create_followup_draft(
         request,
         supplier,
-        draft_client=SafeOutreachClient(service),
+        draft_client=SafeOutreachClient(service, cfg.mail_identity()),
         operator_name=cfg.operator_display_name,
         now=dt.datetime.now(dt.UTC),
     )

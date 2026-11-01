@@ -72,6 +72,9 @@ class _FakeSuppliers:
 class _FakeCfg:
     operator_display_name = "Jane"
 
+    def mail_identity(self):
+        return None
+
 
 # ---------------------------------------------------------------------------
 # _followup_select_step
@@ -345,6 +348,9 @@ def test_followup_apply_step_persists_metadata_via_upsert(monkeypatch):
     class _FakeCfg:
         operator_display_name = "Jane"
 
+        def mail_identity(self):
+            return None
+
     class _FakeDraftClient:
         def create_draft(self, *, to, subject, body, label):
             return {"draft_id": "fd-1", "message_id": "fm-1", "thread_id": "thr-1"}
@@ -360,7 +366,7 @@ def test_followup_apply_step_persists_metadata_via_upsert(monkeypatch):
 
     import xsource.outreach.client as out_mod
 
-    monkeypatch.setattr(out_mod, "SafeOutreachClient", lambda svc: _FakeDraftClient())
+    monkeypatch.setattr(out_mod, "SafeOutreachClient", lambda svc, identity: _FakeDraftClient())
 
     import importlib
 
