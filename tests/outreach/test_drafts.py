@@ -190,3 +190,62 @@ def test_model_subject_is_used_unless_it_is_long_or_carries_the_reference():
     for bad in ("EICR quote r-0042", "y" * 81, ""):
         subject = build_quote_request(request, supplier, Gateway(bad)).subject
         assert subject == "Quote please: Electrician"
+
+
+def _request(town="Newton Abbot"):
+    email_vars = {"job_summary": "fallen tree"}
+    if town:
+        email_vars["location_town"] = town
+    return Request(
+        id="r-0042",
+        created_at="2026-06-10T15:58:00+01:00",
+        raw_need="Fallen tree needs cutting and chipping",
+        triage={"email_vars": email_vars},
+        constraints={"needed_by": "Friday"},
+    )
+
+
+def _supplier():
+    return Supplier(id="s-1", name="Westcountry Tree Care", email="info@example.com")
+
+
+def test_drafts_are_signed_with_the_configured_name(monkeypatch):
+    monkeypatch.delenv("XSOURCE_OPERATOR_DISPLAY_NAME", raising=False)
+    body = build_quote_request(_request(), _supplier()).body
+    assert "Cheers,\nGareth" in body and "Milo" not in body
+
+
+def test_sign_off_follows_the_env_override(monkeypatch):
+    monkeypatch.setenv("XSOURCE_OPERATOR_DISPLAY_NAME", "Jane")
+    assert "Cheers,\nJane" in build_quote_request(_request(), _supplier()).body
+
+
+def test_prompt_names_the_configured_operator(monkeypatch):
+    monkeypatch.delenv("XSOURCE_OPERATOR_DISPLAY_NAME", raising=False)
+    gateway = _Gateway()
+    build_quote_request(_request(), _supplier(), gateway=gateway)
+    prompt = gateway.calls[0]["messages"][0]["content"]
+    assert "Operator first name: Gareth" in prompt and "Milo" not in prompt
+
+
+def test_no_town_never_says_near_the_area(monkeypatch):
+    monkeypatch.delenv("XSOURCE_HOME_TOWN", raising=False)
+    body = build_quote_request(_request(town=None), _supplier()).body
+    assert "near the area" not in body and "We're a local care home" in body
+
+
+def test_empty_home_town_counts_as_unset(monkeypatch):
+    monkeypatch.setenv("XSOURCE_HOME_TOWN", "")
+    body = build_quote_request(_request(town=None), _supplier()).body
+    assert "We're a local care home" in body
+
+
+def test_home_town_is_used_when_triage_has_none(monkeypatch):
+    monkeypatch.setenv("XSOURCE_HOME_TOWN", "Exampleton")
+    assert "near Exampleton" in build_quote_request(_request(town=None), _supplier()).body
+
+
+def test_triage_town_beats_home_town(monkeypatch):
+    monkeypatch.setenv("XSOURCE_HOME_TOWN", "Exampleton")
+    body = build_quote_request(_request(town="Newton Abbot"), _supplier()).body
+    assert "near Newton Abbot" in body and "Exampleton" not in body
