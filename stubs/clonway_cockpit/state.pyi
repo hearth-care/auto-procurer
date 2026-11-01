@@ -24,3 +24,4 @@ class CockpitState:
     needs: tuple[NeedsItem, ...]
     shelves: dict[str, str]
     toolkit_label: str
+    pulse_hint: str | None = None
