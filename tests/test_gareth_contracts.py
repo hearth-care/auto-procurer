@@ -66,3 +66,21 @@ def test_stages_match_contract():
 
 def test_contract_version_matches():
     assert f"contract_version: {contract.CONTRACT_VERSION}" in WORKBOOK.read_text()
+
+
+def test_board_formula_shapes_match_contract():
+    from xsource.store.models import Request
+    from xsource.workbook.layout import board_rows
+
+    rows = {r["Header"]: r["Source"] for r in parse_contract_tables(WORKBOOK)["Board"]}
+    for energy, tab, price_col in [(False, "EICR Nov 2026", "K"), (True, "Power Nov 2026", "M")]:
+        request = Request(
+            id="r", created_at="2026-11-01T09:00:00+00:00", raw_need="n",
+            title=tab, job_tab=tab, job_tab_gid=1, energy=energy,
+        )  # fmt: skip
+        row = board_rows([request], start_row=7)[0]
+        for header, index in [("Best price", 5), ("Best firm", 6)]:
+            template = rows[header].removeprefix("formula: ").strip("`")
+            expected = template.replace("<tab>", tab).replace("<P>", price_col).replace("<r>", "7")
+            assert row[index] == expected
+        assert row[4] == f"=COUNT('{tab}'!{price_col}2:{price_col})"

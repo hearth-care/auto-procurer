@@ -46,6 +46,7 @@ from xsource.wiring import (
     build_research_fns,
     build_stores,
 )
+from xsource.workbook.layout import uk_phone as _uk_phone
 
 _APP_LABEL = "xsource"
 _UK = ZoneInfo("Europe/London")
@@ -150,17 +151,6 @@ def _walk_stores(ctx: WizardContext):
 def _short_need(raw_need: str, width: int) -> str:
     need = " ".join(raw_need.split())
     return need if len(need) <= width else need[: width - 1].rstrip() + "…"
-
-
-def _uk_phone(phone: str | None) -> str:
-    digits = "".join(ch for ch in phone or "" if ch.isdigit() or ch == "+")
-    if digits.startswith("+44"):
-        digits = "0" + digits[3:]
-    if len(digits) != 11 or not digits.startswith("0"):
-        return phone or ""
-    if digits.startswith("02"):
-        return f"{digits[:3]} {digits[3:7]} {digits[7:]}"
-    return f"{digits[:5]} {digits[5:]}"
 
 
 def _request_screen_row(request) -> str:
