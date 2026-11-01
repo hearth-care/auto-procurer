@@ -308,7 +308,27 @@ def test_workbook_probe_errors_on_missing_tab_and_on_failure(report, monkeypatch
     assert probe.level == "error" and FIXED_TABS[1] in probe.detail
     _with_workbook(report, monkeypatch, _FakeWorkbook(error=RuntimeError("403 no access")))
     probe = _probe(report, "Workbook")
-    assert probe.level == "error" and probe.detail == "403 no access" and probe.fix
+    assert probe.level == "error" and probe.fix
+    assert probe.detail == "Could not read the workbook: RuntimeError: 403 no access"
+    assert "XSOURCE_WORKBOOK_ID" not in probe.fix.title
+
+
+def test_workbook_probe_names_missing_credentials_setting(report, monkeypatch):
+    _with_workbook(report, monkeypatch, _FakeWorkbook(error=KeyError("XSOURCE_SHEETS_TOKEN_PATH")))
+    probe = _probe(report, "Workbook")
+    assert probe.level == "error"
+    assert probe.detail == "Sheets credentials not set (XSOURCE_SHEETS_TOKEN_PATH)"
+    assert "XSOURCE_SHEETS_TOKEN_PATH" in probe.fix.title
+    assert "XSOURCE_WORKBOOK_ID" not in probe.fix.title
+
+
+def test_workbook_probe_missing_tab_fix_is_not_to_set_workbook_id(report, monkeypatch):
+    from xsource.workbook.contract import FIXED_TABS
+
+    _with_workbook(report, monkeypatch, _FakeWorkbook({FIXED_TABS[0]: 0}))
+    probe = _probe(report, "Workbook")
+    assert "XSOURCE_WORKBOOK_ID" not in probe.fix.title
+    assert probe.fix.cmd == "xsource workbook redraw"
 
 
 def test_home_needs_you_lists_jobs_waiting_on_operator(report, monkeypatch):
@@ -329,5 +349,6 @@ def test_home_needs_you_lists_jobs_waiting_on_operator(report, monkeypatch):
     )
     titles = [item.title for item in cockpit.capture_state().needs]
     assert "EICR: ring 3 firms" in titles
+    assert all("r-000" not in (item.detail or "") for item in cockpit.capture_state().needs)
     assert not any(t.startswith("Chase: eicr") for t in titles)
     assert any(t.startswith("Chase: fence repair") for t in titles)

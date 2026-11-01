@@ -161,13 +161,18 @@ def _short_need(raw_need: str, width: int) -> str:
     return need if len(need) <= width else need[: width - 1].rstrip() + "…"
 
 
+def _job_title(request) -> str:
+    return request.title or _short_need(request.raw_need, 40)
+
+
 def _request_screen_row(request) -> str:
     try:
         created = dt.datetime.fromisoformat(request.created_at)
         when = f"{created.day} {created:%b}"
     except ValueError:
         when = request.created_at[:10]
-    return f"{request.id}  {request.status:<7} {when:>6}  {_short_need(request.raw_need, 70)}"
+    stage = f" · {request.stage}" if request.job_tab else ""
+    return f"{_job_title(request)}{stage} · {request.status} · {when}"
 
 
 def _supplier_screen_row(supplier) -> str:
@@ -983,6 +988,9 @@ def _money(minor: int) -> str:
     return f"£{pounds:,}" if pence == 0 else f"£{pounds:,}.{pence:02d}"
 
 
+_BOARD_HEADER = "Job · Stage · Quotes in · Best price · Waiting on"
+
+
 def _board_row(request, firm_names: dict[str, str]) -> str:
     priced = [e for e in request.shortlist if e.latest_price_minor is not None]
     if priced:
@@ -991,8 +999,8 @@ def _board_row(request, firm_names: dict[str, str]) -> str:
         best = f"{_money(cheapest.latest_price_minor)} ({firm})"
     else:
         best = "—"
-    title = request.title or _short_need(request.raw_need, 40)
-    return f"{title} · {request.stage} · {len(priced)} in · {best} · {request.waiting_on}"
+    quotes = "no quotes yet" if not priced else f"{len(priced)} quote{'s' * (len(priced) > 1)}"
+    return f"{_job_title(request)} · {request.stage} · {quotes} · {best} · {request.waiting_on}"
 
 
 def _board_step(ctx: WizardContext, bag: dict) -> StepResult:
@@ -1000,7 +1008,7 @@ def _board_step(ctx: WizardContext, bag: dict) -> StepResult:
     firm_names = {s.id: s.name for s in suppliers.all()}
     jobs = [r for r in requests_.all() if r.status == "open" and r.job_tab]
     jobs.sort(key=lambda r: (not r.waiting_on.startswith("You:"), _newest_first(r)))
-    rows = [_board_row(request, firm_names) for request in jobs]
+    rows = [_BOARD_HEADER, *(_board_row(request, firm_names) for request in jobs)]
     waiting = sum(1 for r in jobs if r.waiting_on.startswith("You:"))
     summary = f"{len(jobs)} open job(s) · {waiting} waiting on you{_quarantine_suffix(requests_)}"
     return StepResult(ok=True, data={"summary": _with_rows(summary, rows), "rows": rows})
@@ -1543,9 +1551,9 @@ def capture_state() -> CockpitState:
         if request.job_tab and request.waiting_on.startswith("You:"):
             needs.append(
                 NeedsItem(
-                    title=f"{request.title or _short_need(request.raw_need, 40)}: "
+                    title=f"{_job_title(request)}: "
                     f"{request.waiting_on.removeprefix('You:').strip()}",
-                    detail=f"waiting on you · {request.id}",
+                    detail="waiting on you",
                     level="warn",
                     capability_key="board",
                 )
@@ -1554,8 +1562,8 @@ def capture_state() -> CockpitState:
         if age_days >= cfg.chase_after_days:
             needs.append(
                 NeedsItem(
-                    title=f"Chase: {_short_need(request.raw_need, 40)}",
-                    detail=f"open {age_days} days · {request.id}",
+                    title=f"Chase: {_job_title(request)}",
+                    detail=f"open {age_days} days",
                     level="warn",
                     capability_key="request.list",
                 )
@@ -1753,23 +1761,55 @@ def _workbook_client():
     )
 
 
-def _workbook_probe(cfg: Config) -> Probe:
-    fix = Fix(
-        "Run xsource workbook init and set XSOURCE_WORKBOOK_ID",
-        "xsource workbook init",
-        run=None,
+def _workbook_failure(exc: Exception) -> tuple[str, Fix]:
+    if isinstance(exc, KeyError) and exc.args:
+        return (
+            f"Sheets credentials not set ({exc.args[0]})",
+            Fix(
+                f"Set {exc.args[0]} to the Sheets login file",
+                f"export {exc.args[0]}=<path to the Sheets login file>",
+                run=None,
+            ),
+        )
+    message = str(exc) or "no further detail"
+    return (
+        f"Could not read the workbook: {type(exc).__name__}: {message}",
+        Fix(
+            "Check the Sheets login still works and the workbook is shared with it",
+            "",
+            run=None,
+        ),
     )
+
+
+def _workbook_probe(cfg: Config) -> Probe:
     if not cfg.workbook_id:
         return _probe_with_fix(
-            name="Workbook", level="warn", detail="XSOURCE_WORKBOOK_ID unset", fix=fix
+            name="Workbook",
+            level="warn",
+            detail="XSOURCE_WORKBOOK_ID unset",
+            fix=Fix(
+                "Run xsource workbook init and set XSOURCE_WORKBOOK_ID",
+                "xsource workbook init",
+                run=None,
+            ),
         )
     from xsource.workbook.contract import FIXED_TABS
 
     try:
         tabs = _workbook_client().tab_ids(cfg.workbook_id)
     except Exception as exc:
-        return _probe_with_fix(name="Workbook", level="error", detail=str(exc), fix=fix)
+        detail, fix = _workbook_failure(exc)
+        return _probe_with_fix(name="Workbook", level="error", detail=detail, fix=fix)
     missing = [tab for tab in FIXED_TABS if tab not in tabs]
+    # No command recreates a fixed tab in an existing workbook; redraw only writes into tabs
+    # that are already there.
+    fix = Fix(
+        "Add the missing tab(s) to the Sheet by hand with exactly these names, "
+        "then run xsource workbook redraw",
+        "xsource workbook redraw",
+        run=None,
+    )
     if missing:
         return _probe_with_fix(
             name="Workbook", level="error", detail="missing tab(s): " + ", ".join(missing), fix=fix

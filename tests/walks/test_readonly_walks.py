@@ -199,7 +199,7 @@ def test_request_list_walk_result_via_drive(monkeypatch, tmp_path):
     assert results and results[0].meta["ok"] is True
     lines = results[0].meta["message"].splitlines()
     assert lines[0] == "1 open · 2 total"
-    assert [line.split()[0] for line in lines[1:]] == ["r-0001", "r-0002"]
+    assert lines[1:] == ["fence repair · open · 20 Jun", "annual boiler service · closed · 1 Jun"]
     assert results[0].regions[0].text == results[0].meta["message"]
 
 
@@ -383,10 +383,31 @@ def test_board_rows_waiting_on_you_first_and_best_price(monkeypatch, tmp_path):
     monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: stores)
     data = cockpit_mod._board_step(_ctx([]), {}).data
     assert data["rows"] == [
-        "EICR · Quoted · 0 in · — · You: ring 3 firms",
-        "Gutters · Quoted · 2 in · £450.50 (Alpha Tree Care) · Firms",
+        cockpit_mod._BOARD_HEADER,
+        "EICR · Quoted · no quotes yet · — · You: ring 3 firms",
+        "Gutters · Quoted · 2 quotes · £450.50 (Alpha Tree Care) · Firms",
     ]
     assert data["summary"].splitlines()[0] == "2 open job(s) · 1 waiting on you"
+
+
+def test_board_one_quote_is_singular():
+    from xsource.cli import cockpit as cockpit_mod
+    from xsource.store.models import ShortlistEntry
+
+    job = _job("r-9", "Fence", "2026-10-01T09:00:00+00:00", "Firms")
+    job.shortlist = [ShortlistEntry(supplier_id="s-1", rank=1, latest_price_minor=10000)]
+    assert " · 1 quote · " in cockpit_mod._board_row(job, {"s-1": "Alpha"})
+
+
+def test_request_list_shows_title_and_stage_for_jobs_not_ids(monkeypatch, tmp_path):
+    from xsource.cli import cockpit as cockpit_mod
+
+    store = JsonlStore(tmp_path / "requests.jsonl", Request)
+    store.upsert(_job("r-0001", "EICR", "2026-10-01T09:00:00+00:00", "Firms"))
+    store.upsert(Request(id="r-0002", created_at="2026-10-02T09:00:00+00:00", raw_need="fence"))
+    monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (object(), store, object()))
+    rows = cockpit_mod._request_list_step(_ctx([]), {}).data["rows"]
+    assert rows == ["EICR · Quoted · open · 1 Oct", "fence · open · 2 Oct"]
 
 
 def test_board_whole_pounds_have_no_decimals():
@@ -408,7 +429,8 @@ def test_board_walk_result_via_drive(monkeypatch, tmp_path):
     results = [m for m in stream if m.kind == "walk.result"]
     assert results and results[0].meta["ok"] is True
     lines = results[0].meta["message"].splitlines()
-    assert lines[1].startswith("EICR")
+    assert lines[1] == "Job · Stage · Quotes in · Best price · Waiting on"
+    assert lines[2].startswith("EICR")
 
 
 def test_board_step_never_writes(monkeypatch, tmp_path):
