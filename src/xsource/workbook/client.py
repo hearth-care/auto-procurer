@@ -218,7 +218,8 @@ class WorkbookClient:
                 }
             )
         elif kind == "black_book":
-            protect_spans = [("Tell them by", "Tell them by")]
+            # Kind of job and Firm key the row for readback, as Firm does on a job tab.
+            protect_spans = [("Kind of job", "Firm"), ("Tell them by", "Tell them by")]
             number_format("Last price", _CURRENCY)
             requests.extend(_black_book_dates(gid))
             requests.append(

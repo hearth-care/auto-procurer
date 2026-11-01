@@ -117,7 +117,12 @@ def read_job_edits(
             warnings.append(f"{tab}: no firm called '{firm}' on this job")
             continue
         entry, supplier = found
-        was = drawn.get(job_key(cell), {})
+        # A row with no snapshot is a firm typed over another: comparing it with nothing
+        # would read every cell as an edit and copy the old firm's details onto this one.
+        was = drawn.get(job_key(cell))
+        if was is None:
+            warnings.append(f"{tab}: '{firm}' was not drawn here; edits ignored")
+            continue
 
         def changed(header: str, cell=cell, was=was) -> bool:
             return _edited(cell.get(header, ""), was, header)
@@ -183,9 +188,10 @@ def read_black_book_edits(
         if supplier is None:
             warnings.append(f"Black book: no firm called '{firm}'")
             continue
-        was = drawn.get(
-            black_book_key({"Kind of job": cell.get("Kind of job", ""), "Firm": firm}), {}
-        )
+        was = drawn.get(black_book_key({"Kind of job": cell.get("Kind of job", ""), "Firm": firm}))
+        if was is None:
+            warnings.append(f"Black book: '{firm}' was not drawn here; edits ignored")
+            continue
 
         def changed(header: str, cell=cell, was=was) -> bool:
             return _edited(cell.get(header, ""), was, header)

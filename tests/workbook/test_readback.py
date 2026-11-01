@@ -234,3 +234,35 @@ def test_a_uk_date_shown_for_the_drawn_iso_date_is_not_an_edit():
     rows[1][2] = "05/03/2026"
     read_black_book_edits(rows, [s], drawn=drawn)
     assert s.contract_ends == "2026-03-05"
+
+
+def test_a_firm_typed_over_another_in_the_black_book_copies_nothing_onto_it():
+    old, new = _suppliers()["s-1"], _suppliers()["s-2"]
+    new.email, new.contact_name = "office@sparks.example", "Jo"
+    rows = [
+        ["Kind of job", "Firm", "Contact", "Phone", "Email", "Contract ends", "Notice to give"],
+        ["EICR", "Example Sparks Ltd", "Sam", "'01632 960001", "sam@acme.example", "", "30"],
+    ]
+    assert read_black_book_edits(rows, [old, new], drawn=BB_DRAWN) == [
+        "Black book: 'Example Sparks Ltd' was not drawn here; edits ignored"
+    ]
+    assert (new.contact_name, new.phone, new.email, new.notice_days) == (
+        "Jo",
+        "01632 960002",
+        "office@sparks.example",
+        None,
+    )
+
+
+def test_a_job_row_retyped_to_another_firm_on_the_job_copies_nothing_onto_it():
+    suppliers = _suppliers()
+    drawn = _drawn(_job(firms=["Acme Testing"]), suppliers)
+    req = _job()
+    rows = [
+        list(JOB_COLUMNS),
+        _row(firm="Example Sparks Ltd", contact="Sam", phone="'01632 960001"),
+    ]
+    warnings = read_job_edits(rows, req, suppliers, on=ON, drawn=drawn)
+    assert warnings == ["EICR Nov 2026: 'Example Sparks Ltd' was not drawn here; edits ignored"]
+    assert _entry(req, "Example Sparks Ltd").contact_name is None
+    assert suppliers["s-2"].phone == "01632 960002"

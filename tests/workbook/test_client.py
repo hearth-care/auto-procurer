@@ -193,7 +193,9 @@ def test_black_book_conditional_format_and_protection():
     ]
     j = BLACK_BOOK_COLUMNS.index("Tell them by")
     assert j == 9
-    assert [_cols(p["range"]) for p in _protected(reqs)] == [(j, j + 1)]
+    # Kind of job and Firm are the row's key: a retyped firm would read as a different row.
+    assert BLACK_BOOK_COLUMNS[:2] == ("Kind of job", "Firm")
+    assert [_cols(p["range"]) for p in _protected(reqs)] == [(0, 2), (j, j + 1)]
     assert all(p["warningOnly"] is True for p in _protected(reqs))
 
 

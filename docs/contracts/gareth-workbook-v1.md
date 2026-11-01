@@ -70,9 +70,12 @@ M `Est. yearly cost`; the later columns shift right by two. Board best price rea
 
 | Columns | Rule |
 |---|---|
-| All formula columns, Board A–C and H–I, Log, job-tab `Firm` | protected; written only by Gareth |
+| All formula columns, Board A–C and H–I, Log, job-tab `Firm`, Black book `Kind of job` and `Firm` | protected; written only by Gareth |
 | Job tab: Contact, Phone, Email, Stage, prices, Notes | hand-editable; read back into the store before every redraw |
 | Black book: Contact, Phone, Email, Contract ends, Notice to give | hand-editable; read back the same way |
+
+A row whose firm was not drawn on that tab (a firm typed over another) is not read back; the
+redraw puts the drawn firm back and reports it.
 
 ## Workbook identity
 
