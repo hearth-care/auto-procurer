@@ -78,3 +78,13 @@ def test_shelf_item_order_is_stable():
     assert by_shelf["C"] == ["book.search", "book.import"]
     assert by_shelf["D"] == ["book.publish", "partner.checkatrade"]
     assert by_shelf["E"] == ["request.outreach", "request.followup", "watcher.status"]
+
+
+def test_only_walks_that_write_nothing_skip_the_preflight_confirm():
+    # writes=False makes the framework run a walk without "Continue?", so a walk that
+    # creates Sheets, drafts or store rows must never carry it.
+    caps = {c.key: c for c in registry.get_capabilities() if c.blast_radius is not None}
+    skips = {key for key, cap in caps.items() if not cap.blast_radius.writes}
+    assert {"request.list", "book.search"} <= skips
+    for key in skips:
+        assert caps[key].blast_radius.summary == "Writes nothing.", key
