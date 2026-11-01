@@ -93,3 +93,37 @@ def test_list_recent_messages_fetches_full_messages():
     assert out[0].id == "m-2"
     assert out[0].body == "Separate reply"
     assert service.messages_obj.list_calls[0]["q"] == "newer_than:7d"
+
+
+def test_a_404_thread_becomes_thread_missing_and_other_errors_still_raise():
+    import httplib2
+    import pytest
+    from googleapiclient.errors import HttpError
+
+    from xsource.watcher.daemon import ThreadMissing
+    from xsource.watcher.gmail import GmailWatcherClient
+
+    class _Get:
+        def __init__(self, status):
+            self.status = status
+
+        def execute(self):
+            raise HttpError(httplib2.Response({"status": self.status}), b"{}")
+
+    class _Service:
+        def __init__(self, status):
+            self.status = status
+
+        def users(self):
+            return self
+
+        def threads(self):
+            return self
+
+        def get(self, **kwargs):
+            return _Get(self.status)
+
+    with pytest.raises(ThreadMissing):
+        GmailWatcherClient(_Service(404), own_addresses=set()).list_thread_messages("gone")
+    with pytest.raises(HttpError):
+        GmailWatcherClient(_Service(500), own_addresses=set()).list_thread_messages("thr")

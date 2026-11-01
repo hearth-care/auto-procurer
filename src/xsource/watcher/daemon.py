@@ -15,6 +15,10 @@ from xsource.watcher.apply import apply_reply_to_request, mark_thread_sent
 from xsource.watcher.parser import parse_supplier_reply
 
 
+class ThreadMissing(LookupError):
+    """Gmail has no thread with the id recorded at draft time."""
+
+
 @dataclass(frozen=True)
 class WatcherMessage:
     id: str
@@ -115,9 +119,17 @@ def process_once(
         # We defer state.mark_processed until AFTER requests.upsert so a failed
         # persist never strands a message id in the dedup store (S2 ordering fix).
         pending_marks: list[tuple[str, str]] = []
+        # A draft rewritten or deleted in Gmail leaves a dead thread id behind; one dead
+        # id used to fail the whole cycle, so every other supplier went unwatched too.
+        missing: list[str] = []
 
-        for thread_id in known_threads:
-            for message in gmail.list_thread_messages(thread_id):
+        for thread_id in sorted(known_threads):
+            try:
+                thread_messages = gmail.list_thread_messages(thread_id)
+            except ThreadMissing:
+                missing.append(thread_id)
+                continue
+            for message in thread_messages:
                 if state.seen(message.id):
                     continue
                 rank = _entry_rank_for_thread(request, thread_id)
@@ -157,6 +169,10 @@ def process_once(
             recent_messages=recent_messages,
             known_threads=known_threads,
         )
+        if missing:
+            request.watcher["missing_threads"] = missing
+        else:
+            request.watcher.pop("missing_threads", None)
         request.watcher["last_checked_at"] = _iso(now)
         if request.sheet_id:
             sheets.update_heartbeat(request.sheet_id, now)

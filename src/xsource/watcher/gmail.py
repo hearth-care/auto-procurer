@@ -7,7 +7,9 @@ import datetime as dt
 from email.utils import parseaddr
 from typing import Any
 
-from xsource.watcher.daemon import WatcherMessage
+from googleapiclient.errors import HttpError
+
+from xsource.watcher.daemon import ThreadMissing, WatcherMessage
 
 
 def _header(payload: dict[str, Any], name: str) -> str:
@@ -57,9 +59,17 @@ class GmailWatcherClient:
         )
 
     def list_thread_messages(self, thread_id: str) -> list[WatcherMessage]:
-        thread = (
-            self.service.users().threads().get(userId="me", id=thread_id, format="full").execute()
-        )
+        try:
+            thread = (
+                self.service.users()
+                .threads()
+                .get(userId="me", id=thread_id, format="full")
+                .execute()
+            )
+        except HttpError as exc:
+            if exc.status_code == 404:
+                raise ThreadMissing(thread_id) from exc
+            raise
         return [self._convert(message) for message in thread.get("messages", [])]
 
     def list_recent_messages(self, *, query: str = "newer_than:7d") -> list[WatcherMessage]:
