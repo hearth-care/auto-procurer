@@ -6,6 +6,7 @@ from typing import Any
 class BlastRadius:
     summary: str
     reversible: str
+    writes: bool = True
 
 @dataclass(frozen=True)
 class CapabilitySpec:

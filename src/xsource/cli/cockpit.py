@@ -80,16 +80,20 @@ _INVOICE_CAPTURE_BLAST = BlastRadius(
     reversible="Invoice and price-history rows can be corrected by operator edit.",
 )
 
-_WATCHER_STATUS_BLAST = BlastRadius(summary="Writes nothing.", reversible="No write is performed.")
+_WATCHER_STATUS_BLAST = BlastRadius(
+    summary="Writes nothing.", reversible="No write is performed.", writes=False
+)
 
 _REQUEST_LIST_BLAST = BlastRadius(
     summary="Writes nothing.",
     reversible="No write is performed.",
+    writes=False,
 )
 
 _BOOK_SEARCH_BLAST = BlastRadius(
     summary="Writes nothing.",
     reversible="No write is performed.",
+    writes=False,
 )
 
 _BOOK_IMPORT_BLAST = BlastRadius(
