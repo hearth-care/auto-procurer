@@ -36,7 +36,7 @@ jobs:
       XSOURCE_WATCHER_SCHEDULER_NAME: ${{ vars.XSOURCE_WATCHER_SCHEDULER_NAME }}
       XSOURCE_SYNC_SCHEDULER_NAME: ${{ vars.XSOURCE_SYNC_SCHEDULER_NAME }}
       XSOURCE_SIGNALS_SCHEDULER_NAME: ${{ vars.XSOURCE_SIGNALS_SCHEDULER_NAME }}
-      XSOURCE_WATCHER_SCHEDULE: ${{ vars.XSOURCE_WATCHER_SCHEDULE || '*/5 * * * *' }}
+      XSOURCE_WATCHER_SCHEDULE: ${{ vars.XSOURCE_WATCHER_SCHEDULE || '0 * * * *' }}
       XSOURCE_SYNC_SCHEDULE: ${{ vars.XSOURCE_SYNC_SCHEDULE || '10 2 * * *' }}
       XSOURCE_SIGNALS_SCHEDULE: ${{ vars.XSOURCE_SIGNALS_SCHEDULE || '5 7 * * *' }}
       XSOURCE_SCHEDULER_TIME_ZONE: ${{ vars.XSOURCE_SCHEDULER_TIME_ZONE || 'Europe/London' }}
@@ -136,7 +136,7 @@ jobs:
               --args "${args}"
           }
 
-          deploy_job "${XSOURCE_WATCHER_JOB_NAME}" xsource watcher run --cycles 4 --interval 60
+          deploy_job "${XSOURCE_WATCHER_JOB_NAME}" xsource watcher run --once
           deploy_job "${XSOURCE_SYNC_JOB_NAME}" xsource request sync-all
           deploy_job "${XSOURCE_SIGNALS_JOB_NAME}" xsource signals scan
 
