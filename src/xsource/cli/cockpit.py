@@ -93,6 +93,12 @@ _REQUEST_LIST_BLAST = BlastRadius(
     writes=False,
 )
 
+_BOARD_BLAST = BlastRadius(
+    summary="Writes nothing.",
+    reversible="No write is performed.",
+    writes=False,
+)
+
 _BOOK_SEARCH_BLAST = BlastRadius(
     summary="Writes nothing.",
     reversible="No write is performed.",
@@ -968,6 +974,54 @@ def _request_list_step(ctx: WizardContext, bag: dict) -> StepResult:
     return StepResult(ok=True, data={"summary": _with_rows(summary, rows), "rows": rows})
 
 
+def _money(minor: int) -> str:
+    pounds, pence = divmod(minor, 100)
+    return f"£{pounds:,}" if pence == 0 else f"£{pounds:,}.{pence:02d}"
+
+
+def _board_row(request, firm_names: dict[str, str]) -> str:
+    priced = [e for e in request.shortlist if e.latest_price_minor is not None]
+    if priced:
+        cheapest = min(priced, key=lambda e: e.latest_price_minor)
+        firm = firm_names.get(cheapest.supplier_id, cheapest.supplier_id)
+        best = f"{_money(cheapest.latest_price_minor)} ({firm})"
+    else:
+        best = "—"
+    title = request.title or _short_need(request.raw_need, 40)
+    return f"{title} · {request.stage} · {len(priced)} in · {best} · {request.waiting_on}"
+
+
+def _board_step(ctx: WizardContext, bag: dict) -> StepResult:
+    suppliers, requests_, _invoices = _walk_stores(ctx)
+    firm_names = {s.id: s.name for s in suppliers.all()}
+    jobs = [r for r in requests_.all() if r.status == "open" and r.job_tab]
+    jobs.sort(key=lambda r: (not r.waiting_on.startswith("You:"), _newest_first(r)))
+    rows = [_board_row(request, firm_names) for request in jobs]
+    waiting = sum(1 for r in jobs if r.waiting_on.startswith("You:"))
+    summary = f"{len(jobs)} open job(s) · {waiting} waiting on you{_quarantine_suffix(requests_)}"
+    return StepResult(ok=True, data={"summary": _with_rows(summary, rows), "rows": rows})
+
+
+def _newest_first(request) -> float:
+    try:
+        created = dt.datetime.fromisoformat(request.created_at)
+    except ValueError:
+        return 0.0
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=dt.UTC)
+    return -created.timestamp()
+
+
+_board_handler = make_walk_handler(
+    title="Board",
+    steps=[Step(label="Board", run=_board_step)],
+    blast_radius=_BOARD_BLAST,
+    preconditions_fn=_readonly_preconditions,
+    equivalent_cli=_CLI_REQUEST_LIST,
+    total=2,
+)
+
+
 def _book_search_term_step(ctx: WizardContext, bag: dict) -> StepResult:
     term = ctx.input_fn("Search term: ").strip() if ctx.input_fn else ""
     if not term:
@@ -1280,6 +1334,18 @@ def register_all() -> None:
     """Register xsource's cockpit capabilities."""
     register_capability(
         CapabilitySpec(
+            key="board",
+            shelf="B",
+            title="Board",
+            summary="Open jobs: stage, quotes in, best price, who it is waiting on. Changes nothing.",
+            equivalent_cli=_CLI_REQUEST_LIST,
+            run=_board_handler,
+            blast_radius=_BOARD_BLAST,
+            money_movement=False,
+        )
+    )
+    register_capability(
+        CapabilitySpec(
             key="request.new",
             shelf="A",
             title="New request",
@@ -1470,6 +1536,17 @@ def capture_state() -> CockpitState:
             age_days = (now - created.astimezone(dt.UTC)).days
         except ValueError:
             age_days = 0
+        if request.job_tab and request.waiting_on.startswith("You:"):
+            needs.append(
+                NeedsItem(
+                    title=f"{request.title or _short_need(request.raw_need, 40)}: "
+                    f"{request.waiting_on.removeprefix('You:').strip()}",
+                    detail=f"waiting on you · {request.id}",
+                    level="warn",
+                    capability_key="board",
+                )
+            )
+            continue
         if age_days >= cfg.chase_after_days:
             needs.append(
                 NeedsItem(
@@ -1664,6 +1741,40 @@ def _probe_with_fix(*, name: str, level: str, detail: str, fix: Fix) -> Probe:
     return Probe(name=name, level=level, detail=detail, fix=None if level == "ok" else fix)
 
 
+def _workbook_client():
+    from xsource.workbook.client import WorkbookClient
+
+    return WorkbookClient(
+        Credentials.from_authorized_user_file(os.environ["XSOURCE_SHEETS_TOKEN_PATH"])
+    )
+
+
+def _workbook_probe(cfg: Config) -> Probe:
+    fix = Fix(
+        "Run xsource workbook init and set XSOURCE_WORKBOOK_ID",
+        "xsource workbook init",
+        run=None,
+    )
+    if not cfg.workbook_id:
+        return _probe_with_fix(
+            name="Workbook", level="warn", detail="XSOURCE_WORKBOOK_ID unset", fix=fix
+        )
+    from xsource.workbook.contract import FIXED_TABS
+
+    try:
+        tabs = _workbook_client().tab_ids(cfg.workbook_id)
+    except Exception as exc:
+        return _probe_with_fix(name="Workbook", level="error", detail=str(exc), fix=fix)
+    missing = [tab for tab in FIXED_TABS if tab not in tabs]
+    if missing:
+        return _probe_with_fix(
+            name="Workbook", level="error", detail="missing tab(s): " + ", ".join(missing), fix=fix
+        )
+    return _probe_with_fix(
+        name="Workbook", level="ok", detail=f"{len(tabs)} tab(s) · fixed tabs present", fix=fix
+    )
+
+
 def doctor_build_probes(report: object) -> list[Probe]:
     cfg: Config = report["cfg"]  # type: ignore[index]
     suppliers = report["suppliers"]  # type: ignore[index]
@@ -1740,6 +1851,7 @@ def doctor_build_probes(report: object) -> list[Probe]:
             detail=store_detail,
             fix=None,
         ),
+        _workbook_probe(cfg),
         _reply_watcher_probe(requests_, request_records, now),
         _pending_signals_probe(cfg, suppliers, requests_, invoices, now),
     ]

@@ -84,3 +84,28 @@ def test_board_formula_shapes_match_contract():
             expected = template.replace("<tab>", tab).replace("<P>", price_col).replace("<r>", "7")
             assert row[index] == expected
         assert row[4] == f"=COUNT('{tab}'!{price_col}2:{price_col})"
+
+
+SCREENS = Path("docs/contracts/gareth-screens-v1.md")
+_LATER_STAGES = {"call_list": 2, "calls_to_file": 2}
+
+
+def test_screen_pages_exist():
+    from clonway_cockpit import contract as cockpit_contract
+    from clonway_cockpit import registry
+
+    from xsource.cli import cockpit
+
+    pages = [r["Page id"].strip("`") for r in parse_contract_tables(SCREENS)["Cockpit pages (new)"]]
+    registry.clear_capabilities()
+    cockpit.register_all()
+    try:
+        registered = {c.key for c in registry.get_capabilities()}
+        for page in pages:
+            if page in _LATER_STAGES:
+                assert page not in registered
+            else:
+                assert page in registered
+        cockpit_contract.assert_render_model_parity(cockpit)
+    finally:
+        registry.clear_capabilities()

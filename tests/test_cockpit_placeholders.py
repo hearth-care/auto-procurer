@@ -54,10 +54,10 @@ def test_placeholder_summaries_carry_status_wording():
 def test_request_sync_card_summary_via_drive():
     """Drive into the request.sync card and assert status wording in the model frame."""
     host = cockpit._host(agent_mode=True)
-    # Shelf B: item 1 = invoice.capture, item 2 = request.list, item 3 = request.sync
-    stream = CockpitDriver(host, keys=["B", "3", "q", "q"]).run()
+    # Shelf B: 1 = board, 2 = invoice.capture, 3 = request.list, 4 = request.sync
+    stream = CockpitDriver(host, keys=["B", "4", "q", "q"]).run()
     cards = [m for m in stream if m.kind == "card"]
-    assert cards, "No card frame reached after driving to shelf B item 3"
+    assert cards, "No card frame reached after driving to shelf B item 4"
     card = cards[0]
     summary = card.meta.get("summary", "")
     assert _CLI_MARKER in summary, (
@@ -74,7 +74,7 @@ def test_shelf_item_order_is_stable():
     for cap in registry.get_capabilities():
         by_shelf.setdefault(cap.shelf, []).append(cap.key)
     assert by_shelf["A"] == ["request.new", "request.trigger", "request.reorder"]
-    assert by_shelf["B"] == ["invoice.capture", "request.list", "request.sync"]
+    assert by_shelf["B"] == ["board", "invoice.capture", "request.list", "request.sync"]
     assert by_shelf["C"] == ["book.search", "book.import"]
     assert by_shelf["D"] == ["book.publish", "partner.checkatrade"]
     assert by_shelf["E"] == ["request.outreach", "request.followup", "watcher.status"]
