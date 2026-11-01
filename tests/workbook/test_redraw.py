@@ -121,7 +121,7 @@ def test_redraw_logs_stage_change_against_the_request(tmp_path):
     assert entry.request_id == "r-1"
     assert entry.text == "Stage: Calling → Waiting for prices"
     assert entry.at == NOW.isoformat()
-    assert client.written["Log"][1][1:] == ["EICR Nov 2026", entry.text]
+    assert client.written["Log"][1][1:] == ["'EICR Nov 2026", entry.text]
 
 
 def test_redraw_with_no_changes_adds_no_log_lines_and_saves_nothing(tmp_path):
@@ -306,3 +306,59 @@ def test_migrate_dry_run_changes_nothing(monkeypatch):
     assert "r-old" in result.stdout
     assert client.calls == [] and client.formatted == []
     assert requests.upserted == [] and requests.get("r-old").job_tab is None
+
+
+class _SheetsLike(FakeWorkbookClient):
+    """Reads back what Sheets would show for each cell written under USER_ENTERED."""
+
+    @staticmethod
+    def _shown(cell):
+        import re
+
+        if cell.startswith("'"):
+            return cell[1:]
+        if cell.startswith("=HYPERLINK"):
+            return "link"
+        if cell.startswith("=IF("):
+            return ""
+        if cell[:1] in ("=", "+", "-", "@"):
+            return "#ERROR!"
+        if m := re.fullmatch(r"(\d{1,2})/(\d{1,2})", cell):
+            return f"{int(m[1]):02d}/{int(m[2]):02d}/2026"
+        return cell
+
+    def read_tab(self, wb, name):
+        rows = super().read_tab(wb, name)
+        return [[self._shown(c) for c in row] for row in rows]
+
+
+def test_notes_and_contacts_that_look_like_formulas_or_dates_survive_redraws(tmp_path):
+    suppliers = _suppliers()
+    suppliers.get("s-1").preferred = True
+    suppliers.get("s-1").categories = ["EICR"]
+    suppliers.get("s-1").contact_name = "@Sam"
+    job = _job()
+    job.shortlist[0].notes = "=no access before 10"
+    job.shortlist[1].contact_name = "1/2"
+    client, df = _SheetsLike(), _drawn_file(tmp_path)
+    requests, log = FakeStore([job]), FakeStore()
+    _redraw(client, suppliers, requests, log, df)
+    report = _redraw(client, suppliers, requests, log, df)
+    assert report["warnings"] == []
+    assert job.shortlist[0].notes == "=no access before 10"
+    assert job.shortlist[1].contact_name == "1/2"
+    assert suppliers.get("s-1").contact_name == "@Sam"
+
+
+def test_a_firm_whose_name_needs_escaping_still_matches_its_own_row(tmp_path):
+    suppliers = FakeStore([Supplier(id="s-1", name="+Plus Electrical")])
+    job = _job(shortlist=[ShortlistEntry(supplier_id="s-1", rank=1)])
+    client, df = _SheetsLike(), _drawn_file(tmp_path)
+    requests = FakeStore([job])
+    _redraw(client, suppliers, requests, FakeStore(), df)
+    edited = [list(r) for r in client.written["EICR Nov 2026"]]
+    edited[1][JOB_COLUMNS.index("Notes")] = "rings back"
+    client.tabs["EICR Nov 2026"] = edited
+    report = _redraw(client, suppliers, requests, FakeStore(), df)
+    assert report["warnings"] == []
+    assert job.shortlist[0].notes == "rings back"

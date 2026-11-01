@@ -74,12 +74,14 @@ def snapshot_rows(rows: list[list[str]], key) -> TabSnapshot:
     return out
 
 
+# Keys are built from the drawn rows, where free text carries the ' escape, and looked up
+# with what Sheets shows, where it does not; both sides go through _plain.
 def job_key(cells: dict[str, str]) -> str:
-    return cells["Firm"].casefold()
+    return _plain(cells["Firm"]).casefold()
 
 
 def black_book_key(cells: dict[str, str]) -> str:
-    return f"{cells['Kind of job']}|{cells['Firm']}".casefold()
+    return f"{_plain(cells['Kind of job'])}|{_plain(cells['Firm'])}".casefold()
 
 
 def read_job_edits(
@@ -107,7 +109,7 @@ def read_job_edits(
     warnings: list[str] = []
     for raw in rows[1:]:
         cell = _cells(raw, wanted)
-        firm = cell["Firm"]
+        firm = _plain(cell["Firm"])
         if not firm:
             continue
         found = entries.get(firm.casefold())
@@ -115,7 +117,7 @@ def read_job_edits(
             warnings.append(f"{tab}: no firm called '{firm}' on this job")
             continue
         entry, supplier = found
-        was = drawn.get(firm.casefold(), {})
+        was = drawn.get(job_key(cell), {})
 
         def changed(header: str, cell=cell, was=was) -> bool:
             return _edited(cell.get(header, ""), was, header)
@@ -174,14 +176,16 @@ def read_black_book_edits(
     warnings: list[str] = []
     for raw in rows[1:]:
         cell = _cells(raw, wanted)
-        firm = cell["Firm"]
+        firm = _plain(cell["Firm"])
         if not firm:
             continue
         supplier = by_name.get(firm.casefold())
         if supplier is None:
             warnings.append(f"Black book: no firm called '{firm}'")
             continue
-        was = drawn.get(f"{cell.get('Kind of job', '')}|{firm}".casefold(), {})
+        was = drawn.get(
+            black_book_key({"Kind of job": cell.get("Kind of job", ""), "Firm": firm}), {}
+        )
 
         def changed(header: str, cell=cell, was=was) -> bool:
             return _edited(cell.get(header, ""), was, header)

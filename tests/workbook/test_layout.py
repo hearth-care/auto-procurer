@@ -82,7 +82,7 @@ def test_board_lists_only_open_tabbed_jobs_newest_first():
     closed = _job("Shut Nov 2026", status="closed")
     untabbed = Request(id="r-x", created_at="2026-11-02T09:00:00+00:00", raw_need="n")
     rows = board_rows([old, closed, untabbed, new])
-    assert [r[0] for r in rows] == ["New Nov 2026", "Old Oct 2026"]
+    assert [r[0] for r in rows] == ["'New Nov 2026", "'Old Oct 2026"]
     assert "E3" in rows[1][5]
 
 
@@ -131,7 +131,7 @@ def test_job_tab_row_shows_prices_in_pounds_and_last_contact():
         _job_with_quote(first=78000, latest=72000, on="2026-11-05", via="email"), _suppliers()
     )
     assert rows[0] == list(contract.JOB_COLUMNS)
-    assert rows[1][9:12] == ["780", "720", "5 Nov · email"]
+    assert rows[1][9:12] == ["780", "720", "'5 Nov · email"]
     assert rows[1][1:5] == ["Acme Electrical", "Pat", "'07700 900001", "hi@acme.example"]
     assert len(rows[1]) == len(contract.JOB_COLUMNS)
 
@@ -162,7 +162,7 @@ def test_energy_job_tab_row_uses_energy_columns():
     ]
     rows = job_tab_rows(r, _suppliers())
     assert rows[0] == list(contract.ENERGY_JOB_COLUMNS)
-    assert rows[1][9:14] == ["24 months", "28.5p", "45p", "4100", "5 Nov · call"]
+    assert rows[1][9:14] == ["'24 months", "28.5p", "45p", "4100", "'5 Nov · call"]
     assert rows[1][16] == "n" and len(rows[1]) == len(contract.ENERGY_JOB_COLUMNS)
 
 
@@ -208,7 +208,44 @@ def test_log_newest_first():
     rows = log_rows(entries, {r.id: r})
     assert rows[0] == list(contract.LOG_COLUMNS)
     assert rows[1:] == [
-        ["2026-11-02 10:00", "EICR Nov 2026", "Quote in"],
-        ["2026-11-01 09:05", "EICR Nov 2026", "Rang Acme"],
+        ["2026-11-02 10:00", "'EICR Nov 2026", "Quote in"],
+        ["2026-11-01 09:05", "'EICR Nov 2026", "Rang Acme"],
         ["2026-07-02 00:30", "", "Housekeeping"],
     ]
+
+
+@pytest.mark.parametrize(
+    ("value", "cell"),
+    [
+        ("=SUM(A1)", "'=SUM(A1)"),
+        ("+ve reply", "'+ve reply"),
+        ("- ring after 5", "'- ring after 5"),
+        ("@office", "'@office"),
+        ("1/2", "'1/2"),
+        ("250", "'250"),
+        ("TRUE", "'TRUE"),
+        ("'til Friday", "''til Friday"),
+        ("Acme Testing", "Acme Testing"),
+        ("", ""),
+    ],
+)
+def test_free_text_that_sheets_would_reinterpret_is_escaped(value, cell):
+    from xsource.workbook.layout import text_cell
+
+    assert text_cell(value) == cell
+
+
+def test_job_tab_free_text_is_escaped_but_prices_stay_numbers():
+    r = _job_with_quote(first=78000, latest=72000, on="2026-11-05", via="email")
+    r.shortlist[0].notes = "=no access before 10"
+    r.shortlist[0].contact_name = "1/2 day Pat"
+    rows = job_tab_rows(r, _suppliers())
+    assert rows[1][2] == "'1/2 day Pat"
+    assert rows[1][14] == "'=no access before 10"
+    assert rows[1][9:11] == ["780", "720"]
+
+
+def test_black_book_free_text_is_escaped():
+    s = _supplier(contact_name="@Sam", email="+sam@example.test")
+    rows = black_book_rows([s], [_closed_job()])
+    assert rows[1][2] == "'@Sam" and rows[1][4] == "'+sam@example.test"

@@ -28,6 +28,27 @@ def phone_cell(phone: str | None) -> str:
     return f"'{shown}" if shown else ""
 
 
+_FORMULA_START = ("=", "+", "-", "@", "#", "'")
+
+
+def text_cell(value: str | None) -> str:
+    # Cells are written USER_ENTERED, so "=…" becomes a formula and "1/2" a date; readback
+    # would then see the changed display as a hand edit and save it over the real value.
+    # Anything with a digit is escaped too: it costs nothing and catches every number form.
+    v = value or ""
+    if (
+        v.startswith(_FORMULA_START)
+        or any(ch.isdigit() for ch in v)
+        or v.upper()
+        in (
+            "TRUE",
+            "FALSE",
+        )
+    ):
+        return f"'{v}"
+    return v
+
+
 def job_tab_name(title: str, created: dt.date, existing: set[str]) -> str:
     base = " ".join(_TAB_FORBIDDEN.sub("", title).split())
     suffix = f" {created:%b %Y}"
@@ -81,15 +102,15 @@ def board_rows(requests: list[Request], start_row: int = 2) -> list[list[str]]:
         keen = "+".join(f'COUNTIF({tab}!I:I,"{s}")' for s in contract.KEEN_STAGES)
         rows.append(
             [
-                r.title or "",
+                text_cell(r.title),
                 _link(f"#gid={r.job_tab_gid}", r.job_tab or ""),
                 r.stage,
                 f"={keen}",
                 f"=COUNT({tab}!{p}2:{p})",
                 f'=IF(E{row}=0,"",MIN({tab}!{p}:{p}))',
                 f'=IF(E{row}=0,"",INDEX({tab}!B:B, MATCH(MIN({tab}!{p}:{p}), {tab}!{p}:{p}, 0)))',
-                r.next_step,
-                r.waiting_on,
+                text_cell(r.next_step),
+                text_cell(r.waiting_on),
             ]
         )
     return rows
@@ -124,27 +145,26 @@ def job_tab_rows(request: Request, suppliers: dict[str, Supplier]) -> list[list[
         s = suppliers.get(e.supplier_id) or Supplier(id=e.supplier_id, name=e.supplier_id)
         head = [
             str(e.rank),
-            s.name,
-            e.contact_name or s.contact_name or "",
+            text_cell(s.name),
+            text_cell(e.contact_name or s.contact_name),
             phone_cell(s.phone),
-            s.email or "",
-            s.website or "",
-            s.address or "",
+            text_cell(s.email),
+            text_cell(s.website),
+            text_cell(s.address),
             "" if e.miles is None else f"{e.miles:g}",
             e.stage,
         ]
         if energy:
             q = e.energy_quote
             money = [
-                str(q.get("term", "")),
+                text_cell(str(q.get("term", ""))),
                 str(q.get("unit_rate", "")),
                 str(q.get("standing_charge", "")),
                 _pounds(e.latest_price_minor),
             ]
-            tail = [_last_contact(e), "", _thread_link(e), e.notes]
         else:
             money = [_pounds(e.first_price_minor), _pounds(e.latest_price_minor)]
-            tail = [_last_contact(e), "", _thread_link(e), e.notes]
+        tail = [text_cell(_last_contact(e)), "", _thread_link(e), text_cell(e.notes)]
         rows.append([*head, *money, *tail])
     return rows
 
@@ -178,11 +198,11 @@ def black_book_rows(suppliers: list[Supplier], requests: list[Request]) -> list[
         n = len(rows) + 1
         rows.append(
             [
-                kind,
-                s.name,
-                (entry.contact_name if entry else None) or s.contact_name or "",
+                text_cell(kind),
+                text_cell(s.name),
+                text_cell((entry.contact_name if entry else None) or s.contact_name),
                 phone_cell(s.phone),
-                s.email or "",
+                text_cell(s.email),
                 _iso_date(s.last_used),
                 _pounds(entry.latest_price_minor) if entry else "",
                 _iso_date(s.contract_ends),
@@ -212,8 +232,8 @@ def log_rows(entries: list[LogEntry], requests: dict[str, Request]) -> list[list
         rows.append(
             [
                 f"{_london(e.at):%Y-%m-%d %H:%M}",
-                (r.job_tab or r.title or "") if r else "",
-                e.text,
+                text_cell((r.job_tab or r.title) if r else ""),
+                text_cell(e.text),
             ]
         )
     return rows
