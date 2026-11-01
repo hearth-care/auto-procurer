@@ -60,10 +60,13 @@ def redraw() -> None:
     cfg = Config.from_env()
     workbook_id = _configured_id(cfg)
     suppliers, requests, _invoices = build_stores(cfg)
+    client = _workbook_client()
     with run_session(trigger="workbook.redraw", args={}):
+        # A workbook made before init set the UK locale is put right here, before any readback.
+        client.apply_uk_settings(workbook_id)
         report = redraw_workbook(
             workbook_id=workbook_id,
-            client=_workbook_client(),
+            client=client,
             suppliers=suppliers,
             requests=requests,
             log=build_log_store(cfg),
@@ -89,6 +92,7 @@ def migrate(
     client, log, drawn_file = _workbook_client(), build_log_store(cfg), build_drawn_state_file(cfg)
     now = dt.datetime.now(dt.UTC)
     with run_session(trigger="workbook.migrate", args={}):
+        client.apply_uk_settings(workbook_id)
         for line in migrate_open_requests(
             workbook_id=workbook_id,
             client=client,

@@ -44,6 +44,8 @@ def test_redraw_command_redraws_the_configured_workbook(monkeypatch, tmp_path):
     assert result.exit_code == 0, result.output
     assert "'jobs': 0" in result.stdout
     assert [n for c, n in client.calls if c == "write_tab"] == ["Board", "Black book", "Log"]
+    # An existing workbook made before the locale fix gets it on its next redraw.
+    assert client.calls[0] == ("apply_uk_settings", "wb")
 
 
 def test_sync_all_redraws_the_workbook_when_one_is_configured(monkeypatch, tmp_path):

@@ -222,3 +222,15 @@ def test_price_edit_on_a_booked_row_keeps_it_booked():
     rows = [list(JOB_COLUMNS), _row(firm="Acme Testing", latest_price="£280", stage="Booked")]
     assert _read(rows, req, _suppliers()) == []
     assert (e.latest_price_minor, e.stage) == (28000, "Booked")
+
+
+def test_a_uk_date_shown_for_the_drawn_iso_date_is_not_an_edit():
+    s = _suppliers()["s-1"]
+    s.contract_ends = "2026-03-04"
+    rows = [["Kind of job", "Firm", "Contract ends"], ["EICR", "Acme Testing", "04/03/2026"]]
+    drawn = {"eicr|acme testing": {"Contract ends": "2026-03-04"}}
+    assert read_black_book_edits(rows, [s], drawn=drawn) == []
+    assert s.contract_ends == "2026-03-04"
+    rows[1][2] = "05/03/2026"
+    read_black_book_edits(rows, [s], drawn=drawn)
+    assert s.contract_ends == "2026-03-05"

@@ -16,6 +16,11 @@ Kind = Literal["board", "job", "energy", "black_book", "log"]
 
 _CURRENCY = {"type": "CURRENCY", "pattern": "£#,##0.00"}
 _PLAIN_NUMBER = {"type": "NUMBER", "pattern": "0.00##"}
+_UK_DATE = {"type": "DATE", "pattern": "dd/mm/yyyy"}
+# Readback parses day/month/year; under Sheets' default en_US locale a drawn 2026-03-04
+# would show as 3/4/2026 and come back as 3 April.
+_UK_SETTINGS = {"locale": "en_GB", "timeZone": "Europe/London"}
+_BLACK_BOOK_DATES = ("Last used", "Contract ends", "Tell them by")
 # Every tab is created with Sheets' default 26 columns, so Z is the full span.
 _LAST_COLUMN = "Z"
 _TELL_THEM_BY_RED = '=AND(J2<>"",J2-TODAY()<60)'
@@ -34,6 +39,20 @@ def _span(gid: int, headers: tuple[str, ...], first: str, last: str | None = Non
         "startColumnIndex": start,
         "endColumnIndex": end,
     }
+
+
+def _number_format(gid: int, headers: tuple[str, ...], header: str, fmt: dict) -> dict:
+    return {
+        "repeatCell": {
+            "range": _span(gid, headers, header),
+            "cell": {"userEnteredFormat": {"numberFormat": fmt}},
+            "fields": "userEnteredFormat.numberFormat",
+        }
+    }
+
+
+def _black_book_dates(gid: int) -> list[dict]:
+    return [_number_format(gid, BLACK_BOOK_COLUMNS, h, _UK_DATE) for h in _BLACK_BOOK_DATES]
 
 
 class TabMissing(Exception):
@@ -56,7 +75,7 @@ class WorkbookClient:
 
     def create(self, title: str, folder_id: str | None) -> tuple[str, str]:
         body = {
-            "properties": {"title": title},
+            "properties": {"title": title, **_UK_SETTINGS},
             "sheets": [
                 {"properties": {"title": name, "index": i}} for i, name in enumerate(FIXED_TABS)
             ],
@@ -66,6 +85,23 @@ class WorkbookClient:
         if folder_id:
             self.drive.files().update(fileId=sid, addParents=folder_id, fields="id").execute()
         return sid, url
+
+    def apply_uk_settings(self, workbook_id: str) -> None:
+        # Safe on every redraw (format_tab is not): both requests overwrite, adding nothing.
+        tabs = self.tab_ids(workbook_id)
+        requests: list[dict[str, Any]] = [
+            {
+                "updateSpreadsheetProperties": {
+                    "properties": _UK_SETTINGS,
+                    "fields": "locale,timeZone",
+                }
+            }
+        ]
+        if "Black book" in tabs:
+            requests.extend(_black_book_dates(tabs["Black book"]))
+        self.sheets.spreadsheets().batchUpdate(
+            spreadsheetId=workbook_id, body={"requests": requests}
+        ).execute()
 
     def tab_ids(self, workbook_id: str) -> dict[str, int]:
         ss = (
@@ -148,15 +184,7 @@ class WorkbookClient:
         ]
 
         def number_format(first: str, fmt: dict) -> None:
-            requests.append(
-                {
-                    "repeatCell": {
-                        "range": _span(gid, headers, first),
-                        "cell": {"userEnteredFormat": {"numberFormat": fmt}},
-                        "fields": "userEnteredFormat.numberFormat",
-                    }
-                }
-            )
+            requests.append(_number_format(gid, headers, first, fmt))
 
         protect_spans: list[tuple[str, str]] = []
         if kind == "board":
@@ -192,6 +220,7 @@ class WorkbookClient:
         elif kind == "black_book":
             protect_spans = [("Tell them by", "Tell them by")]
             number_format("Last price", _CURRENCY)
+            requests.extend(_black_book_dates(gid))
             requests.append(
                 {
                     "addConditionalFormatRule": {

@@ -50,5 +50,8 @@ class FakeWorkbookClient:
         self.ids[name] = max(self.ids.values()) + 1
         return self.ids[name]
 
+    def apply_uk_settings(self, wb):
+        self.calls.append(("apply_uk_settings", wb))
+
     def format_tab(self, wb, gid, kind):
         self.formatted.append((gid, kind))

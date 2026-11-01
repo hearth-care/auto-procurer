@@ -206,9 +206,60 @@ def test_black_book_last_price_is_currency():
         for r in _requests(sheets)
         if "repeatCell" in r and r["repeatCell"]["range"].get("startRowIndex") == 1
     ]
-    assert [(_cols(c["range"]), c["cell"]["userEnteredFormat"]["numberFormat"]) for c in cells] == [
-        ((g, g + 1), {"type": "CURRENCY", "pattern": "£#,##0.00"})
+    currency = [
+        c for c in cells if c["cell"]["userEnteredFormat"]["numberFormat"]["type"] != "DATE"
     ]
+    assert [
+        (_cols(c["range"]), c["cell"]["userEnteredFormat"]["numberFormat"]) for c in currency
+    ] == [((g, g + 1), {"type": "CURRENCY", "pattern": "£#,##0.00"})]
+
+
+_UK_DATE = {"type": "DATE", "pattern": "dd/mm/yyyy"}
+
+
+def _date_columns(reqs, gid):
+    return sorted(
+        _cols(r["repeatCell"]["range"])[0]
+        for r in reqs
+        if "repeatCell" in r
+        and r["repeatCell"]["range"]["sheetId"] == gid
+        and r["repeatCell"]["cell"]["userEnteredFormat"].get("numberFormat") == _UK_DATE
+    )
+
+
+def test_create_sets_uk_locale_and_london_time():
+    client, sheets, _ = _client()
+    client.create("Gareth", None)
+    props = sheets.calls[0][1]["body"]["properties"]
+    assert (props["locale"], props["timeZone"]) == ("en_GB", "Europe/London")
+
+
+def test_black_book_dates_are_drawn_day_month_year():
+    client, sheets, _ = _client()
+    client.format_tab("wb1", 1, "black_book")
+    assert _date_columns(_requests(sheets), 1) == [
+        BLACK_BOOK_COLUMNS.index(h) for h in ("Last used", "Contract ends", "Tell them by")
+    ]
+
+
+def test_uk_settings_on_an_existing_workbook_add_no_protections_or_rules():
+    client, sheets, _ = _client()
+    client.apply_uk_settings("wb1")
+    client.apply_uk_settings("wb1")
+    reqs = _requests(sheets)
+    props = [r["updateSpreadsheetProperties"] for r in reqs if "updateSpreadsheetProperties" in r]
+    assert (
+        props
+        == [
+            {
+                "properties": {"locale": "en_GB", "timeZone": "Europe/London"},
+                "fields": "locale,timeZone",
+            }
+        ]
+        * 2
+    )
+    assert _date_columns(reqs, 1) == sorted([5, 7, 9] * 2)
+    assert not [r for r in reqs if set(r) - {"updateSpreadsheetProperties", "repeatCell"}]
 
 
 def test_job_tab_prices_stage_validation_and_firm_protection():

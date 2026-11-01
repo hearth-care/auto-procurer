@@ -79,6 +79,9 @@ M `Est. yearly cost`; the later columns shift right by two. Board best price rea
 One workbook, id in `XSOURCE_WORKBOOK_ID`. A second job with the same tab name in the same month
 gets ` (2)`. Sheets made per request before this contract stay where they are, read-only.
 
+The workbook's locale is `en_GB` and its time zone `Europe/London`; Black book dates (F, H, J)
+are shown `dd/mm/yyyy`, and a date typed by hand is read as day/month/year.
+
 ## Black book
 
 One row per kind of job.
