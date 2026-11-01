@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from xsource.store.models import Request, ShortlistEntry, Supplier
-from xsource.watcher.daemon import WatcherMessage, process_once
+from xsource.watcher.daemon import ThreadMissing, WatcherMessage, process_once
 from xsource.watcher.state import ProcessedMessageStore
 
 
@@ -191,3 +191,44 @@ def test_process_once_skips_gmail_recent_scan_when_no_open_requests(tmp_path):
 
     assert report == {"processed": 0, "possible_replies": 0}
     assert gmail.recent_calls == 0
+
+
+def test_a_missing_thread_is_recorded_and_the_other_suppliers_are_still_watched(tmp_path):
+    request = _request()
+    request.shortlist.append(
+        ShortlistEntry(supplier_id="s-2", rank=2, outreach={"thread_id": "thr-gone"})
+    )
+    reply = WatcherMessage(
+        id="in-1",
+        thread_id="thr-1",
+        from_addr="tree@example.com",
+        body="£185 Thursday",
+        received_at=dt.datetime(2026, 6, 11, 9, 38, tzinfo=dt.UTC),
+    )
+
+    class _GmailWithDeadThread(_Gmail):
+        def list_thread_messages(self, thread_id):
+            if thread_id == "thr-gone":
+                raise ThreadMissing(thread_id)
+            return super().list_thread_messages(thread_id)
+
+    requests = _Store([request])
+    kwargs = dict(
+        requests=requests,
+        suppliers=_Store([Supplier(id="s-1", name="Tree Co", email="tree@example.com")]),
+        sheets=_Sheets(),
+        gateway=_Gateway(),
+        state=ProcessedMessageStore(tmp_path / "watcher.sqlite3"),
+        now=dt.datetime(2026, 6, 11, 9, 40, tzinfo=dt.UTC),
+    )
+
+    result = process_once(gmail=_GmailWithDeadThread({"thr-1": [reply]}), **kwargs)
+
+    saved = requests.get("r-0042")
+    assert result["processed"] == 1
+    assert saved.shortlist[0].reply["status"] == "quoted"
+    assert saved.watcher["missing_threads"] == ["thr-gone"]
+
+    saved.shortlist[1].outreach["thread_id"] = "thr-1"
+    process_once(gmail=_Gmail({"thr-1": [reply]}), **kwargs)
+    assert "missing_threads" not in requests.get("r-0042").watcher
