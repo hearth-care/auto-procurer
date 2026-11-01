@@ -135,7 +135,7 @@ def test_search_walk_surfaces_quarantine(monkeypatch, tmp_path):
     result = cockpit_mod._book_search_results_step(_ctx([]), {"term": "alpha"})
     assert (
         result.data["summary"].splitlines()[0]
-        == "1 match(es) for 'alpha' · quarantined: 1 corrupt line(s)"
+        == "1 firm matches 'alpha' · quarantined: 1 corrupt line(s)"
     )
 
 
@@ -146,7 +146,7 @@ def test_search_walk_no_matches(monkeypatch, tmp_path):
     store.upsert(_alpha_supplier())
     monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (store, object(), object()))
     result = cockpit_mod._book_search_results_step(_ctx([]), {"term": "roofing"})
-    assert result.data["summary"] == "0 match(es) for 'roofing'"
+    assert result.data["summary"] == "0 firms match 'roofing'"
 
 
 def test_search_walk_empty_book(monkeypatch, tmp_path):
@@ -155,7 +155,7 @@ def test_search_walk_empty_book(monkeypatch, tmp_path):
     store = JsonlStore(tmp_path / "suppliers.jsonl", Supplier)
     monkeypatch.setattr(cockpit_mod, "build_stores", lambda cfg: (store, object(), object()))
     result = cockpit_mod._book_search_results_step(_ctx([]), {"term": "heating"})
-    assert result.data["summary"] == "0 match(es) for 'heating'"
+    assert result.data["summary"] == "0 firms match 'heating'"
 
 
 def test_search_term_step_rejects_empty():
@@ -224,7 +224,7 @@ def test_book_search_walk_result_via_drive(monkeypatch, tmp_path):
     results = [m for m in stream if m.kind == "walk.result"]
     assert results and results[0].meta["ok"] is True
     lines = results[0].meta["message"].splitlines()
-    assert lines[0] == "1 match(es) for 'alpha'"
+    assert lines[0] == "1 firm matches 'alpha'"
     assert "Alpha Tree Care" in lines[1]
 
 

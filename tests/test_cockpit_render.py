@@ -44,7 +44,7 @@ def test_cockpit_opens_three_region_shell() -> None:
     assert "needs you" in frame  # region 2
     assert "toolkit" in frame  # region 3
     assert "xsource" in frame  # the worker's identity (header + pulse)
-    assert "Ready for new request" in frame
+    assert "nothing pending" in frame  # no filler item when nothing is due
     assert "New request" in frame  # the worker's own shelf label (toolkit)
 
 
@@ -144,8 +144,8 @@ def test_pending_replies_pill_present_when_nonzero(monkeypatch):
     monkeypatch.setattr(_cockpit, "_status", _patched_status)
     state = _cockpit.capture_state()
     pill_labels = {p.label for p in state.pills}
-    assert "pending replies" in pill_labels
-    pending_pill = next(p for p in state.pills if p.label == "pending replies")
+    assert "replies" in pill_labels
+    pending_pill = next(p for p in state.pills if p.label == "replies")
     assert pending_pill.status == "2"
     assert pending_pill.level == "warn"
 
@@ -185,7 +185,7 @@ def test_no_pending_replies_pill_when_zero(monkeypatch):
     monkeypatch.setattr(_cockpit, "_status", _patched_status)
     state = _cockpit.capture_state()
     pill_labels = {p.label for p in state.pills}
-    assert "pending replies" not in pill_labels
+    assert "replies" not in pill_labels
 
 
 class _Store:

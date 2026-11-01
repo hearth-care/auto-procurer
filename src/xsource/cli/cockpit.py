@@ -9,6 +9,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
+from zoneinfo import ZoneInfo
 
 from clonway_cockpit import keys, render, shell, usage
 from clonway_cockpit.doctor import Fix, Probe, fixes_for
@@ -26,9 +27,8 @@ from rich.console import Console, RenderableType
 
 from xsource.book.importer import import_csv
 from xsource.book.publish import DIRECTORY_TITLE, publish_directory
-from xsource.book.search import find_matches, format_supplier_row, search_suppliers
+from xsource.book.search import find_matches, search_suppliers
 from xsource.budget import Budget
-from xsource.cli.request import format_request_row
 from xsource.config import DEFAULT_MODEL, Config
 from xsource.invoices.capture import validate_iso_date
 from xsource.research.candidates import Candidate
@@ -48,6 +48,7 @@ from xsource.wiring import (
 )
 
 _APP_LABEL = "xsource"
+_UK = ZoneInfo("Europe/London")
 
 _CLI_WATCHER_STATUS = "xsource watcher status"
 _CLI_REQUEST_LIST = "xsource request list"
@@ -65,7 +66,7 @@ _SHELVES: dict[str, str] = {
 }
 
 _REQUEST_NEW_BLAST = BlastRadius(
-    summary="Creates one Google Sheet and writes request + suppliers to the xsource store. Does not send or draft any email in P1.",
+    summary="Creates one Google Sheet and saves the request and its suppliers. Does not send or draft any email.",
     reversible="Sheet can be deleted; store records can be removed by id.",
 )
 
@@ -130,9 +131,51 @@ def _quarantine_suffix(store) -> str:
     return f" · quarantined: {quarantined} corrupt line(s)"
 
 
+def _walk_stores(ctx: WizardContext):
+    # Building the stores downloads all three files from the bucket. A read-only walk needs
+    # them for its preconditions and again for its step, which made each one take 5-13 s to
+    # open on the live store, so the walk loads them once.
+    state = getattr(ctx, "state", None)
+    if state is None:
+        return build_stores(Config.from_env())
+    if "stores" not in state:
+        state["stores"] = build_stores(Config.from_env())
+    return state["stores"]
+
+
+def _short_need(raw_need: str, width: int) -> str:
+    need = " ".join(raw_need.split())
+    return need if len(need) <= width else need[: width - 1].rstrip() + "…"
+
+
+def _uk_phone(phone: str | None) -> str:
+    digits = "".join(ch for ch in phone or "" if ch.isdigit() or ch == "+")
+    if digits.startswith("+44"):
+        digits = "0" + digits[3:]
+    if len(digits) != 11 or not digits.startswith("0"):
+        return phone or ""
+    if digits.startswith("02"):
+        return f"{digits[:3]} {digits[3:7]} {digits[7:]}"
+    return f"{digits[:5]} {digits[5:]}"
+
+
+def _request_screen_row(request) -> str:
+    try:
+        created = dt.datetime.fromisoformat(request.created_at)
+        when = f"{created.day} {created:%b}"
+    except ValueError:
+        when = request.created_at[:10]
+    return f"{request.id}  {request.status:<7} {when:>6}  {_short_need(request.raw_need, 70)}"
+
+
+def _supplier_screen_row(supplier) -> str:
+    trades = ", ".join(supplier.categories) or "-"
+    return f"{supplier.name[:32]:<32}  {trades[:24]:<24}  {_uk_phone(supplier.phone)}"
+
+
 def _readonly_preconditions(ctx: WizardContext) -> list[Precondition]:
     try:
-        suppliers, requests_, invoices = build_stores(Config.from_env())
+        suppliers, requests_, invoices = _walk_stores(ctx)
     except Exception:
         return [Precondition("Store loaded", False, "store unavailable")]
     stores = (suppliers, requests_, invoices)
@@ -893,11 +936,11 @@ def _with_rows(summary: str, rows: list[str]) -> str:
 
 
 def _request_list_step(ctx: WizardContext, bag: dict) -> StepResult:
-    _suppliers, requests_, _invoices = build_stores(Config.from_env())
-    records = sorted(requests_.all(), key=lambda r: r.id)
+    _suppliers, requests_, _invoices = _walk_stores(ctx)
+    records = sorted(requests_.all(), key=lambda r: (r.status != "open", r.id))
     open_n = sum(1 for request in records if request.status == "open")
     total_n = len(records)
-    rows = [format_request_row(request) for request in records]
+    rows = [_request_screen_row(request) for request in records]
     summary = f"{open_n} open · {total_n} total{_quarantine_suffix(requests_)}"
     return StepResult(ok=True, data={"summary": _with_rows(summary, rows), "rows": rows})
 
@@ -910,11 +953,12 @@ def _book_search_term_step(ctx: WizardContext, bag: dict) -> StepResult:
 
 
 def _book_search_results_step(ctx: WizardContext, bag: dict) -> StepResult:
-    suppliers, _requests, _invoices = build_stores(Config.from_env())
+    suppliers, _requests, _invoices = _walk_stores(ctx)
     term = bag["term"]
     matches = search_suppliers(suppliers.all(), term)
-    rows = [format_supplier_row(supplier) for supplier in matches]
-    summary = f"{len(matches)} match(es) for '{term}'{_quarantine_suffix(suppliers)}"
+    rows = [_supplier_screen_row(supplier) for supplier in matches]
+    firms = "1 firm matches" if len(matches) == 1 else f"{len(matches)} firms match"
+    summary = f"{firms} '{term}'{_quarantine_suffix(suppliers)}"
     return StepResult(ok=True, data={"summary": _with_rows(summary, rows), "rows": rows})
 
 
@@ -1216,7 +1260,7 @@ def register_all() -> None:
             key="request.new",
             shelf="A",
             title="New request",
-            summary="Plain-English need to a pre-filled supplier shortlist Sheet.",
+            summary="Describe what you need; get a Sheet of nearby firms to call.",
             equivalent_cli=None,  # type: ignore[arg-type]
             run=_request_new_handler,
             blast_radius=_REQUEST_NEW_BLAST,
@@ -1227,7 +1271,7 @@ def register_all() -> None:
             key="request.outreach",
             shelf="E",
             title="Draft outreach",
-            summary="Create draft-only quote requests for suppliers on an open request.",
+            summary="Draft quote requests to the firms on an open request. Never sends.",
             equivalent_cli=None,  # type: ignore[arg-type]
             run=_request_outreach_handler,
             blast_radius=_REQUEST_OUTREACH_BLAST,
@@ -1238,7 +1282,7 @@ def register_all() -> None:
             key="request.trigger",
             shelf="A",
             title="Trigger new request",
-            summary="Convert an approved email/chat trigger into request.new input.",
+            summary="Start a request from an approved email or Chat message.",
             equivalent_cli="xsource request trigger",
             run=_request_trigger_handler,
             blast_radius=_TRIGGER_BLAST,
@@ -1249,7 +1293,7 @@ def register_all() -> None:
             key="request.followup",
             shelf="E",
             title="Draft follow-up",
-            summary="Create draft-only follow-up replies for supplier responses. It never sends email.",
+            summary="Draft replies to firms that have answered. Never sends.",
             equivalent_cli="xsource request followup",
             run=_request_followup_handler,
             blast_radius=_FOLLOWUP_BLAST,
@@ -1260,7 +1304,7 @@ def register_all() -> None:
             key="request.reorder",
             shelf="A",
             title="Reorder recurring service",
-            summary="Prefilled reorder from recurring supplier — review then apply. Does not send or draft any email in this step.",
+            summary="Rebook a regular service with the firm you used last time.",
             equivalent_cli="xsource request reorder",
             run=_request_reorder_handler,
             blast_radius=_REORDER_BLAST,
@@ -1271,7 +1315,7 @@ def register_all() -> None:
             key="invoice.capture",
             shelf="B",
             title="Capture invoice",
-            summary="Record a supplier invoice for AP handoff; never pays money.",
+            summary="Record a supplier invoice and pass it to accounts. Never pays.",
             equivalent_cli="xsource invoice add",
             run=_invoice_capture_handler,
             blast_radius=_INVOICE_CAPTURE_BLAST,
@@ -1282,7 +1326,7 @@ def register_all() -> None:
             key="request.list",
             shelf="B",
             title="List requests",
-            summary="List procurement requests from the store. Read-only.",
+            summary="Every request so far, open ones first. Changes nothing.",
             equivalent_cli=_CLI_REQUEST_LIST,
             run=_request_list_handler,
             blast_radius=_REQUEST_LIST_BLAST,
@@ -1294,7 +1338,7 @@ def register_all() -> None:
             key="book.search",
             shelf="C",
             title="Search black book",
-            summary="Search saved suppliers by name, category, or tag. Read-only.",
+            summary="Find a firm by name or trade. Changes nothing.",
             equivalent_cli=_CLI_BOOK_SEARCH,
             run=_book_search_handler,
             blast_radius=_BOOK_SEARCH_BLAST,
@@ -1306,7 +1350,7 @@ def register_all() -> None:
             key="book.import",
             shelf="C",
             title="Import black book",
-            summary="Seed the supplier store from CSV behind the apply gate.",
+            summary="Add firms from a CSV file, after you confirm.",
             equivalent_cli=_CLI_BOOK_IMPORT,
             run=_book_import_handler,
             blast_radius=_BOOK_IMPORT_BLAST,
@@ -1318,7 +1362,7 @@ def register_all() -> None:
             key="book.publish",
             shelf="D",
             title="Publish staff directory",
-            summary="Regenerate the read-only staff supplier directory behind the apply gate.",
+            summary="Refresh the staff list of firms, after you confirm.",
             equivalent_cli=_CLI_BOOK_PUBLISH,
             run=_book_publish_handler,
             blast_radius=_BOOK_PUBLISH_BLAST,
@@ -1330,14 +1374,14 @@ def register_all() -> None:
             "request.sync",
             "B",
             "Sync request Sheet",
-            "Read human Sheet edits back into the request and black book. Read-only via CLI: xsource request sync.",
+            "Not in the cockpit yet: run xsource request sync in a terminal.",
             "xsource request sync",
         ),
         (
             "partner.checkatrade",
             "D",
             "Checkatrade partner lead",
-            "Prepare a signed partner lead request (build-only; posting requires an explicit gate). Build-only — post gate required.",
+            "Not in the cockpit yet: builds a Checkatrade lead, posts nothing.",
             None,
         ),
     ):
@@ -1356,7 +1400,7 @@ def register_all() -> None:
             key="watcher.status",
             shelf="E",
             title="Reply watcher",
-            summary="Show which open requests the reply watcher is checking and when it last checked each. Read-only.",
+            summary="Which requests are being watched for replies, and when last checked.",
             equivalent_cli=_CLI_WATCHER_STATUS,
             run=_watcher_status_handler,
             blast_radius=_WATCHER_STATUS_BLAST,
@@ -1368,7 +1412,7 @@ def register_all() -> None:
             key="doctor",
             shelf="G",
             title="Doctor",
-            summary="Deep health check — auth, freshness, config. Live — press G to open.",
+            summary="Live check that keys, sign-ins and the store are working.",
             equivalent_cli=None,  # type: ignore[arg-type]
             run=None,
         )
@@ -1394,6 +1438,7 @@ def capture_state() -> CockpitState:
 
     needs = []
     now = dt.datetime.now(dt.UTC)
+    local_now = now.astimezone(_UK)
     for request in open_requests:
         try:
             created = dt.datetime.fromisoformat(request.created_at)
@@ -1405,21 +1450,12 @@ def capture_state() -> CockpitState:
         if age_days >= cfg.chase_after_days:
             needs.append(
                 NeedsItem(
-                    title=f"Follow up {request.id}",
-                    detail=f"{age_days}d open",
+                    title=f"Chase: {_short_need(request.raw_need, 40)}",
+                    detail=f"open {age_days} days · {request.id}",
                     level="warn",
                     capability_key="request.list",
                 )
             )
-    if not needs:
-        needs.append(
-            NeedsItem(
-                title="Ready for new request",
-                detail="Use A to start supplier research.",
-                level="ok",
-                capability_key="request.new",
-            )
-        )
 
     store_online = _store_online(suppliers, requests_, invoices)
 
@@ -1430,39 +1466,41 @@ def capture_state() -> CockpitState:
         if entry.get("status") == "needs_review"
     )
 
+    # The framework pads a pill label to 9 characters and its status to 10, so labels stay
+    # at 8 or fewer or they run into the status ("black book5").
     pills: list[Pill] = [
-        Pill(label="black book", status=str(supplier_count), detail="suppliers", level="ok"),
+        Pill(label="firms", status=str(supplier_count), detail="in the black book", level="ok"),
         Pill(
-            label="open requests",
+            label="requests",
             status=str(len(open_requests)),
-            detail="active",
+            detail="open",
             level="warn" if open_requests else "ok",
         ),
         Pill(
             label="invoices",
             status=str(len(invoice_attention)),
-            detail="need attention",
+            detail="to check",
             level="warn" if invoice_attention else "ok",
         ),
         Pill(
-            label="research budget",
+            label="budget",
             status=budget_level,
-            detail=f"£{budget.spent():.2f}",
+            detail=f"£{budget.spent():.2f} spent",
             level="error" if budget_level == "blocked" else budget_level,
         ),
         Pill(
             label="store",
             status="online" if store_online else "offline",
-            detail="GCS sync — new data is not persisting" if not store_online else "GCS sync",
+            detail="saved to the cloud" if store_online else "not persisting changes",
             level="ok" if store_online else "error",
         ),
     ]
     if pending_review:
         pills.append(
             Pill(
-                label="pending replies",
+                label="replies",
                 status=str(pending_review),
-                detail="needs review",
+                detail="to review",
                 level="warn",
             )
         )
@@ -1470,12 +1508,14 @@ def capture_state() -> CockpitState:
     return CockpitState(
         tenant_name="Auto-Procurer",
         app_label=_APP_LABEL,
-        date_label="",
-        time_label="",
+        date_label=f"{local_now:%a} {local_now.day} {local_now:%b %Y}",
+        time_label=f"{local_now:%H:%M}",
         pills=tuple(pills),
         needs=tuple(needs),
         shelves=_SHELVES,
         toolkit_label="toolkit",
+        # Enter on a pill shows a note rather than syncing anything.
+        pulse_hint="",
     )
 
 
@@ -1493,7 +1533,11 @@ def build_walk_ctx(screen, read_key, *, focus: str | None = None) -> WizardConte
 
 
 def activate_pill(pill, screen, read_key) -> None:
-    screen.update(render.render_note("xsource", "No manual refresh is needed in P1."))
+    screen.update(
+        render.render_note(
+            "xsource", "These figures refresh each time you come back to this screen."
+        )
+    )
     read_key()
 
 
@@ -1591,6 +1635,12 @@ def _pending_signals_probe(cfg: Config, suppliers, requests_, invoices, now: dt.
     )
 
 
+def _probe_with_fix(*, name: str, level: str, detail: str, fix: Fix) -> Probe:
+    # The framework lists every fix a probe carries, so a passing probe must carry none or
+    # Diagnostics tells the operator to set a postcode that is already set.
+    return Probe(name=name, level=level, detail=detail, fix=None if level == "ok" else fix)
+
+
 def doctor_build_probes(report: object) -> list[Probe]:
     cfg: Config = report["cfg"]  # type: ignore[index]
     suppliers = report["suppliers"]  # type: ignore[index]
@@ -1608,22 +1658,28 @@ def doctor_build_probes(report: object) -> list[Probe]:
         else "store unavailable"
     )
     return [
-        Probe(
+        _probe_with_fix(
             name="Google Maps key",
             level="ok" if os.environ.get("GOOGLE_MAPS_API_KEY") else "error",
             detail="present" if os.environ.get("GOOGLE_MAPS_API_KEY") else "missing",
             fix=Fix("Set GOOGLE_MAPS_API_KEY", "export GOOGLE_MAPS_API_KEY=...", run=None),
         ),
-        Probe(
+        _probe_with_fix(
             name="Anthropic key",
             level="ok" if os.environ.get("ANTHROPIC_API_KEY") else "error",
             detail="present" if os.environ.get("ANTHROPIC_API_KEY") else "missing",
             fix=Fix("Set ANTHROPIC_API_KEY", "export ANTHROPIC_API_KEY=...", run=None),
         ),
-        Probe(
+        _probe_with_fix(
             name="Sheets token",
             level="ok" if sheets_token and Path(sheets_token).exists() else "error",
-            detail=sheets_token or "missing",
+            detail=(
+                "present"
+                if sheets_token and Path(sheets_token).exists()
+                else "missing"
+                if not sheets_token
+                else "file not found"
+            ),
             fix=Fix(
                 "Set XSOURCE_SHEETS_TOKEN_PATH", "export XSOURCE_SHEETS_TOKEN_PATH=...", run=None
             ),
@@ -1649,7 +1705,7 @@ def doctor_build_probes(report: object) -> list[Probe]:
             detail=f"{budget.level()} (£{budget.spent():.2f})",
             fix=None,
         ),
-        Probe(
+        _probe_with_fix(
             name="Home postcode",
             level="ok" if cfg.home_postcode else "error",
             detail=cfg.home_postcode or "missing",

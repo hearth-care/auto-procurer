@@ -20,8 +20,8 @@ from xsource.cli import cockpit
 
 # Keys that mark a capability card as self-describing.
 _PLANNED_MARKER = "Planned — not yet wired."
-_CLI_MARKER = "Read-only via CLI:"
-_BUILD_ONLY_MARKER = "Build-only"
+_CLI_MARKER = "Not in the cockpit yet: run"
+_BUILD_ONLY_MARKER = "Not in the cockpit yet: builds"
 _LIVE_MARKER = "Live"
 
 _PLACEHOLDER_STATUS_MARKERS = {
