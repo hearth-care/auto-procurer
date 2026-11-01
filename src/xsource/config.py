@@ -34,6 +34,7 @@ class Config:
     fleet_bucket: str | None
     state_prefix: str
     operator_display_name: str
+    workbook_id: str | None = None
 
     @classmethod
     def from_env(cls) -> Config:
@@ -65,4 +66,5 @@ class Config:
             fleet_bucket=os.environ.get("XSOURCE_FLEET_BUCKET") or None,
             state_prefix=os.environ.get("XSOURCE_STATE_PREFIX", "state/xsource").strip("/"),
             operator_display_name=os.environ.get("XSOURCE_OPERATOR_DISPLAY_NAME", "Milo"),
+            workbook_id=os.environ.get("XSOURCE_WORKBOOK_ID") or None,
         )
