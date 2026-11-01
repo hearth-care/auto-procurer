@@ -200,7 +200,8 @@ def black_book_rows(suppliers: list[Supplier], requests: list[Request]) -> list[
             [
                 text_cell(kind),
                 text_cell(s.name),
-                text_cell((entry.contact_name if entry else None) or s.contact_name),
+                # The firm's own contact first: a Black book Contact edit is saved there.
+                text_cell(s.contact_name or (entry.contact_name if entry else None)),
                 phone_cell(s.phone),
                 text_cell(s.email),
                 _iso_date(s.last_used),

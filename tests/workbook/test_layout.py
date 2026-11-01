@@ -249,3 +249,12 @@ def test_black_book_free_text_is_escaped():
     s = _supplier(contact_name="@Sam", email="+sam@example.test")
     rows = black_book_rows([s], [_closed_job()])
     assert rows[1][2] == "'@Sam" and rows[1][4] == "'+sam@example.test"
+
+
+def test_black_book_shows_the_firms_own_contact_before_the_jobs():
+    job = _closed_job()
+    job.shortlist[0].contact_name = "Pat at the job"
+    rows = black_book_rows([_supplier(contact_name="Sam")], [job])
+    assert rows[1][2] == "Sam"
+    rows = black_book_rows([_supplier()], [job])
+    assert rows[1][2] == "Pat at the job"
