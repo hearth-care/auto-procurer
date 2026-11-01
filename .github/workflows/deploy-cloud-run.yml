@@ -43,6 +43,10 @@ jobs:
       XSOURCE_RUNTIME_ENV: cloud_run
       XSOURCE_EMIT_SIGNALS: "1"
       XSOURCE_OWN_EMAILS: ${{ vars.XSOURCE_OWN_EMAILS }}
+      XSOURCE_WORKBOOK_ID: ${{ vars.XSOURCE_WORKBOOK_ID }}
+      XSOURCE_MAILBOX_ADDRESS: ${{ vars.XSOURCE_MAILBOX_ADDRESS }}
+      XSOURCE_MAILBOX_DISPLAY_NAME: ${{ vars.XSOURCE_MAILBOX_DISPLAY_NAME }}
+      XSOURCE_OPERATOR_DISPLAY_NAME: ${{ vars.XSOURCE_OPERATOR_DISPLAY_NAME }}
     steps:
       - uses: actions/checkout@v6
 
@@ -117,6 +121,14 @@ jobs:
             args="$(IFS=,; echo "$*")"
             local env_vars="XSOURCE_RUNTIME_ENV=${XSOURCE_RUNTIME_ENV},XSOURCE_EMIT_SIGNALS=${XSOURCE_EMIT_SIGNALS},XSOURCE_OWN_EMAILS=${XSOURCE_OWN_EMAILS},XSOURCE_FLEET_BUCKET=${XSOURCE_FLEET_BUCKET},XSOURCE_STATE_PREFIX=${XSOURCE_STATE_PREFIX},XSOURCE_GMAIL_TOKEN_PATH=/secrets/gmail/token.json,XSOURCE_SHEETS_TOKEN_PATH=/secrets/sheets/token.json,ANTHROPIC_API_KEY_FILE=/secrets/anthropic/api-key"
             local secret_mounts="/secrets/gmail/token.json=${XSOURCE_GMAIL_TOKEN_SECRET}:latest,/secrets/sheets/token.json=${XSOURCE_SHEETS_TOKEN_SECRET}:latest,/secrets/anthropic/api-key=${XSOURCE_ANTHROPIC_API_KEY_SECRET}:latest"
+            # --set-env-vars replaces the job's whole environment, so optional settings
+            # must come from repository variables here or a deploy wipes them.
+            local name
+            for name in XSOURCE_WORKBOOK_ID XSOURCE_MAILBOX_ADDRESS XSOURCE_MAILBOX_DISPLAY_NAME XSOURCE_OPERATOR_DISPLAY_NAME; do
+              if [[ -n "${!name:-}" ]]; then
+                env_vars="${env_vars},${name}=${!name}"
+              fi
+            done
             if [[ -n "${XSOURCE_GOOGLE_MAPS_API_KEY_SECRET:-}" ]]; then
               env_vars="${env_vars},GOOGLE_MAPS_API_KEY_FILE=/secrets/google-maps/api-key"
               secret_mounts="${secret_mounts},/secrets/google-maps/api-key=${XSOURCE_GOOGLE_MAPS_API_KEY_SECRET}:latest"
