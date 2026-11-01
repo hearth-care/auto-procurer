@@ -1,0 +1,59 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Gareth workbook</title><style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px;color:#202124;background:#fafafa}.subtitle{opacity:.75}</style>
+<p style="font-size:12px;opacity:.7">Reviewed mock-up, normative alongside docs/contracts/gareth-*-v1.md. Firms, people, numbers and prices are made up.</p>
+<style>
+  .tabs{display:flex;gap:4px;margin:18px 0 0}
+  .tab{padding:6px 14px;border:1px solid #ccc;border-bottom:none;border-radius:6px 6px 0 0;background:#f1f3f4;font-size:13px;color:#333}
+  .tab.on{background:#fff;font-weight:600;color:#188038;border-color:#188038}
+  .sheet{border:1px solid #188038;background:#fff;color:#202124;overflow-x:auto;margin-bottom:6px}
+  .sheet table{border-collapse:collapse;width:100%;font-size:12.5px;font-family:Arial,sans-serif}
+  .sheet th{background:#e8f0fe;text-align:left;padding:5px 8px;border:1px solid #dadce0;white-space:nowrap}
+  .sheet td{padding:5px 8px;border:1px solid #e3e3e3;white-space:nowrap}
+  .key{background:#fff8e1 !important}
+  .f{background:#e6f4ea !important}
+  .lnk{color:#1a56c4;text-decoration:underline}
+  .pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11.5px}
+  .call{background:#fef7e0;color:#8a5a00}.keen{background:#e6f4ea;color:#137333}
+  .quoted{background:#e8f0fe;color:#1a56c4}.no{background:#fce8e6;color:#a50e0e}
+  .you{background:#f9ab00;color:#000}.warn{background:#fce8e6;color:#a50e0e;font-weight:600}
+  .best{font-weight:700;color:#137333}
+  .note{font-size:13px;opacity:.85;margin:4px 0 0;max-width:900px}
+  .legend span{display:inline-block;padding:2px 8px;margin-right:8px;font-size:12px;border:1px solid #ddd;color:#202124}
+  .formula{font-family:monospace;font-size:12px;background:#f1f3f4;color:#202124;padding:6px 10px;margin:6px 0;border-left:3px solid #188038}
+</style>
+
+<h2>Gareth's Sheet, version 2</h2>
+<p class="subtitle">Changes: the firm is the column that joins every tab, full contact details everywhere, Drive and contract links in the black book, renewal dates up front.</p>
+<p class="legend"><span class="key">Yellow = the firm, the join key</span><span class="f">Green = worked out by formula, never typed</span></p>
+
+<h3>Board</h3>
+<p class="note">"Best price" and "Best firm" are now two columns, and both are formulas that read the job's tab. Whatever changes on the job tab, whether Gareth logs a reply or you correct a price by hand, the board follows within a second. Nobody updates the board.</p>
+<div class="tabs"><div class="tab on">Board</div><div class="tab">EICR Nov 2026</div><div class="tab">Black book</div><div class="tab">Log</div></div>
+<div class="sheet"><table>
+<tr><th>Job</th><th>Job tab</th><th>Stage</th><th>Firms keen</th><th>Quotes in</th><th>Best price</th><th>Best firm</th><th>Next step</th><th>Waiting on</th></tr>
+<tr><td>EICR, whole building</td><td class="lnk">EICR Nov 2026</td><td>Haggling</td><td class="f">5</td><td class="f">3</td><td class="f best">£780</td><td class="f key">Moorside Electrical</td><td>Ask Tavy Sparks to beat £780</td><td><span class="pill you">You: approve draft</span></td></tr>
+<tr><td>Commercial waste (renewal)</td><td class="lnk">Waste Jan 2027</td><td>Calling</td><td class="f">0</td><td class="f">0</td><td class="f">—</td><td class="f">—</td><td>Ring 5 firms on today's list</td><td><span class="pill you">You: calls</span></td></tr>
+</table></div>
+<div class="formula">Best price: =MIN('EICR Nov 2026'!K:K) &nbsp;·&nbsp; Best firm: =INDEX('EICR Nov 2026'!B:B, MATCH(MIN('EICR Nov 2026'!K:K), 'EICR Nov 2026'!K:K, 0))</div>
+
+<h3>A job tab</h3>
+<p class="note">Everything you need to ring or write to each firm, without leaving the row.</p>
+<div class="tabs"><div class="tab">Board</div><div class="tab on">EICR Nov 2026</div><div class="tab">Black book</div><div class="tab">Log</div></div>
+<div class="sheet"><table>
+<tr><th>#</th><th>Firm</th><th>Contact</th><th>Phone</th><th>Email</th><th>Website</th><th>Address</th><th>Miles</th><th>Stage</th><th>First price</th><th>Latest price</th><th>Last contact</th><th>Notes</th></tr>
+<tr><td>1</td><td class="key">Moorside Electrical</td><td>Dave</td><td>01822 000111</td><td class="lnk">dave@moorside.example</td><td class="lnk">moorside.example</td><td>Unit 4, Tavistock</td><td>2.1</td><td><span class="pill quoted">Quoted</span></td><td>£840</td><td class="best">£780</td><td>1 Nov · email</td><td>Beat Tavy's £810</td></tr>
+<tr><td>2</td><td class="key">Tavy Sparks</td><td>Sue</td><td>07700 900222</td><td class="lnk">sue@tavysparks.example</td><td>—</td><td>Horrabridge</td><td>3.4</td><td><span class="pill quoted">Quoted</span></td><td>£810</td><td>£810</td><td>31 Oct · call</td><td>Draft "can you beat £780?" ready</td></tr>
+<tr><td>3</td><td class="key">Yelverton Electric</td><td>Ian</td><td>01822 000333</td><td class="lnk">info@yelvelec.example</td><td class="lnk">yelvelec.example</td><td>Yelverton</td><td>1.2</td><td><span class="pill keen">Keen, emailed</span></td><td>—</td><td>—</td><td>31 Oct · call</td><td>Price by Tuesday</td></tr>
+<tr><td>4</td><td class="key">Moor Power Ltd</td><td>—</td><td>01752 000444</td><td>none found</td><td>—</td><td>Plymouth</td><td>6.8</td><td><span class="pill call">No answer</span></td><td>—</td><td>—</td><td>31 Oct · call</td><td>Ask for an email when you get through</td></tr>
+</table></div>
+
+<h3>Black book</h3>
+<p class="note">One row per kind of job. The Drive folder holds what they've had us sign. Renewal and notice dates go red when the notice deadline is less than 60 days away, so you have time to shop around.</p>
+<div class="tabs"><div class="tab">Board</div><div class="tab">EICR Nov 2026</div><div class="tab on">Black book</div><div class="tab">Log</div></div>
+<div class="sheet"><table>
+<tr><th>Kind of job</th><th>Firm</th><th>Contact</th><th>Phone</th><th>Email</th><th>Last used</th><th>Last price</th><th>Contract ends</th><th>Notice to give</th><th>Tell them by</th><th>Documents</th><th>How we chose them</th><th>In Xero</th></tr>
+<tr><td>Commercial waste</td><td class="key">Example Waste Ltd</td><td>Karen</td><td>01752 000999</td><td class="lnk">accounts@exwaste.example</td><td>monthly</td><td>£212/month</td><td>31 Jan 2027</td><td>90 days</td><td class="f warn">2 Nov 2026</td><td class="lnk">Drive folder</td><td class="lnk">Waste Jan 2024</td><td>✓</td></tr>
+<tr><td>Fire risk assessment</td><td class="key">Dartline Fire</td><td>Jo</td><td>01752 000777</td><td class="lnk">jo@dartline.example</td><td>12 Oct 2026</td><td>£450</td><td>— (yearly job)</td><td>—</td><td>Due Oct 2027</td><td class="lnk">Drive folder</td><td class="lnk">FRA Oct 2026</td><td>✓</td></tr>
+<tr><td>Electricity</td><td class="key">Example Energy Co</td><td>Sam (broker)</td><td>0800 000888</td><td class="lnk">sam@broker.example</td><td>ongoing</td><td>24.1p/kWh · 52p/day</td><td>31 Mar 2027</td><td>30 days</td><td class="f">1 Mar 2027</td><td class="lnk">Drive folder</td><td class="lnk">Energy Mar 2025</td><td>✓</td></tr>
+<tr><td>Plumbing</td><td class="key">Walkham Plumbing</td><td>Mike</td><td>01822 000666</td><td class="lnk">mike@walkham.example</td><td>14 Aug 2026</td><td>£95 call-out</td><td>— (as needed)</td><td>—</td><td>—</td><td class="lnk">Drive folder</td><td class="lnk">Plumbing Aug 2026</td><td>✓</td></tr>
+</table></div>
+<div class="formula">Tell them by: =[Contract ends] − [Notice to give] &nbsp;·&nbsp; red when that date is under 60 days away</div>
