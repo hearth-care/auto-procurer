@@ -30,7 +30,7 @@
 <div class="tabs"><div class="tab on">Board</div><div class="tab">EICR Nov 2026</div><div class="tab">Black book</div><div class="tab">Log</div></div>
 <div class="sheet"><table>
 <tr><th>Job</th><th>Job tab</th><th>Stage</th><th>Firms keen</th><th>Quotes in</th><th>Best price</th><th>Best firm</th><th>Next step</th><th>Waiting on</th></tr>
-<tr><td>EICR, whole building</td><td class="lnk">EICR Nov 2026</td><td>Haggling</td><td class="f">5</td><td class="f">3</td><td class="f best">£780</td><td class="f key">Moorside Electrical</td><td>Ask Tavy Sparks to beat £780</td><td><span class="pill you">You: approve draft</span></td></tr>
+<tr><td>EICR, whole building</td><td class="lnk">EICR Nov 2026</td><td>Haggling</td><td class="f">5</td><td class="f">3</td><td class="f best">£780</td><td class="f key">Exampleton Electrical</td><td>Ask Sample Sparks to beat £780</td><td><span class="pill you">You: approve draft</span></td></tr>
 <tr><td>Commercial waste (renewal)</td><td class="lnk">Waste Jan 2027</td><td>Calling</td><td class="f">0</td><td class="f">0</td><td class="f">—</td><td class="f">—</td><td>Ring 5 firms on today's list</td><td><span class="pill you">You: calls</span></td></tr>
 </table></div>
 <div class="formula">Best price: =MIN('EICR Nov 2026'!K:K) &nbsp;·&nbsp; Best firm: =INDEX('EICR Nov 2026'!B:B, MATCH(MIN('EICR Nov 2026'!K:K), 'EICR Nov 2026'!K:K, 0))</div>
@@ -40,10 +40,10 @@
 <div class="tabs"><div class="tab">Board</div><div class="tab on">EICR Nov 2026</div><div class="tab">Black book</div><div class="tab">Log</div></div>
 <div class="sheet"><table>
 <tr><th>#</th><th>Firm</th><th>Contact</th><th>Phone</th><th>Email</th><th>Website</th><th>Address</th><th>Miles</th><th>Stage</th><th>First price</th><th>Latest price</th><th>Last contact</th><th>Notes</th></tr>
-<tr><td>1</td><td class="key">Moorside Electrical</td><td>Dave</td><td>01822 000111</td><td class="lnk">dave@moorside.example</td><td class="lnk">moorside.example</td><td>Unit 4, Tavistock</td><td>2.1</td><td><span class="pill quoted">Quoted</span></td><td>£840</td><td class="best">£780</td><td>1 Nov · email</td><td>Beat Tavy's £810</td></tr>
-<tr><td>2</td><td class="key">Tavy Sparks</td><td>Sue</td><td>07700 900222</td><td class="lnk">sue@tavysparks.example</td><td>—</td><td>Horrabridge</td><td>3.4</td><td><span class="pill quoted">Quoted</span></td><td>£810</td><td>£810</td><td>31 Oct · call</td><td>Draft "can you beat £780?" ready</td></tr>
-<tr><td>3</td><td class="key">Yelverton Electric</td><td>Ian</td><td>01822 000333</td><td class="lnk">info@yelvelec.example</td><td class="lnk">yelvelec.example</td><td>Yelverton</td><td>1.2</td><td><span class="pill keen">Keen, emailed</span></td><td>—</td><td>—</td><td>31 Oct · call</td><td>Price by Tuesday</td></tr>
-<tr><td>4</td><td class="key">Moor Power Ltd</td><td>—</td><td>01752 000444</td><td>none found</td><td>—</td><td>Plymouth</td><td>6.8</td><td><span class="pill call">No answer</span></td><td>—</td><td>—</td><td>31 Oct · call</td><td>Ask for an email when you get through</td></tr>
+<tr><td>1</td><td class="key">Exampleton Electrical</td><td>Dave</td><td>01632 960111</td><td class="lnk">dave@exampleton.example</td><td class="lnk">exampleton.example</td><td>Unit 4, Exampleton</td><td>2.1</td><td><span class="pill quoted">Quoted</span></td><td>£840</td><td class="best">£780</td><td>1 Nov · email</td><td>Beat Sample's £810</td></tr>
+<tr><td>2</td><td class="key">Sample Sparks</td><td>Sue</td><td>07700 900222</td><td class="lnk">sue@samplesparks.example</td><td>—</td><td>Testbury Cross</td><td>3.4</td><td><span class="pill quoted">Quoted</span></td><td>£810</td><td>£810</td><td>31 Oct · call</td><td>Draft "can you beat £780?" ready</td></tr>
+<tr><td>3</td><td class="key">Testbury Electric</td><td>Ian</td><td>01632 960333</td><td class="lnk">info@testburyelec.example</td><td class="lnk">testburyelec.example</td><td>Testbury</td><td>1.2</td><td><span class="pill keen">Keen, emailed</span></td><td>—</td><td>—</td><td>31 Oct · call</td><td>Price by Tuesday</td></tr>
+<tr><td>4</td><td class="key">Mock Power Ltd</td><td>—</td><td>01632 960444</td><td>none found</td><td>—</td><td>Sampleford</td><td>6.8</td><td><span class="pill call">No answer</span></td><td>—</td><td>—</td><td>31 Oct · call</td><td>Ask for an email when you get through</td></tr>
 </table></div>
 
 <h3>Black book</h3>
@@ -51,9 +51,9 @@
 <div class="tabs"><div class="tab">Board</div><div class="tab">EICR Nov 2026</div><div class="tab on">Black book</div><div class="tab">Log</div></div>
 <div class="sheet"><table>
 <tr><th>Kind of job</th><th>Firm</th><th>Contact</th><th>Phone</th><th>Email</th><th>Last used</th><th>Last price</th><th>Contract ends</th><th>Notice to give</th><th>Tell them by</th><th>Documents</th><th>How we chose them</th><th>In Xero</th></tr>
-<tr><td>Commercial waste</td><td class="key">Example Waste Ltd</td><td>Karen</td><td>01752 000999</td><td class="lnk">accounts@exwaste.example</td><td>monthly</td><td>£212/month</td><td>31 Jan 2027</td><td>90 days</td><td class="f warn">2 Nov 2026</td><td class="lnk">Drive folder</td><td class="lnk">Waste Jan 2024</td><td>✓</td></tr>
-<tr><td>Fire risk assessment</td><td class="key">Dartline Fire</td><td>Jo</td><td>01752 000777</td><td class="lnk">jo@dartline.example</td><td>12 Oct 2026</td><td>£450</td><td>— (yearly job)</td><td>—</td><td>Due Oct 2027</td><td class="lnk">Drive folder</td><td class="lnk">FRA Oct 2026</td><td>✓</td></tr>
-<tr><td>Electricity</td><td class="key">Example Energy Co</td><td>Sam (broker)</td><td>0800 000888</td><td class="lnk">sam@broker.example</td><td>ongoing</td><td>24.1p/kWh · 52p/day</td><td>31 Mar 2027</td><td>30 days</td><td class="f">1 Mar 2027</td><td class="lnk">Drive folder</td><td class="lnk">Energy Mar 2025</td><td>✓</td></tr>
-<tr><td>Plumbing</td><td class="key">Walkham Plumbing</td><td>Mike</td><td>01822 000666</td><td class="lnk">mike@walkham.example</td><td>14 Aug 2026</td><td>£95 call-out</td><td>— (as needed)</td><td>—</td><td>—</td><td class="lnk">Drive folder</td><td class="lnk">Plumbing Aug 2026</td><td>✓</td></tr>
+<tr><td>Commercial waste</td><td class="key">Example Waste Ltd</td><td>Karen</td><td>01632 960999</td><td class="lnk">accounts@exwaste.example</td><td>monthly</td><td>£212/month</td><td>31 Jan 2027</td><td>90 days</td><td class="f warn">2 Nov 2026</td><td class="lnk">Drive folder</td><td class="lnk">Waste Jan 2024</td><td>✓</td></tr>
+<tr><td>Fire risk assessment</td><td class="key">Sample Fire Safety</td><td>Jo</td><td>01632 960777</td><td class="lnk">jo@samplefire.example</td><td>12 Oct 2026</td><td>£450</td><td>— (yearly job)</td><td>—</td><td>Due Oct 2027</td><td class="lnk">Drive folder</td><td class="lnk">FRA Oct 2026</td><td>✓</td></tr>
+<tr><td>Electricity</td><td class="key">Example Energy Co</td><td>Sam (broker)</td><td>0808 157 0888</td><td class="lnk">sam@broker.example</td><td>ongoing</td><td>24.1p/kWh · 52p/day</td><td>31 Mar 2027</td><td>30 days</td><td class="f">1 Mar 2027</td><td class="lnk">Drive folder</td><td class="lnk">Energy Mar 2025</td><td>✓</td></tr>
+<tr><td>Plumbing</td><td class="key">Exampleton Plumbing</td><td>Mike</td><td>01632 960666</td><td class="lnk">mike@exampletonplumbing.example</td><td>14 Aug 2026</td><td>£95 call-out</td><td>— (as needed)</td><td>—</td><td>—</td><td class="lnk">Drive folder</td><td class="lnk">Plumbing Aug 2026</td><td>✓</td></tr>
 </table></div>
 <div class="formula">Tell them by: =[Contract ends] − [Notice to give] &nbsp;·&nbsp; red when that date is under 60 days away</div>

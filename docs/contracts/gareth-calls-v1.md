@@ -26,10 +26,10 @@ YYYY-MM-DD HHMM <label> <number> [<call id>]
 
 | Example title | date | time | direction | number | call id |
 |---|---|---|---|---|---|
-| `2026-10-31 1145 Outbound 01865000001 [01dd-0000-0000-000000000001]` | 2026-10-31 | 11:45 | outbound | 01865000001 | 01dd-0000-0000-000000000001 |
-| `2026-10-14 0825 Outbound 850001 [01dd-0000-0000-000000000002]` | 2026-10-14 | 08:25 | outbound | 01822850001 | 01dd-0000-0000-000000000002 |
+| `2026-10-31 1145 Outbound 01632960101 [01dd-0000-0000-000000000001]` | 2026-10-31 | 11:45 | outbound | 01632960101 | 01dd-0000-0000-000000000001 |
+| `2026-10-14 0825 Outbound 960001 [01dd-0000-0000-000000000002]` | 2026-10-14 | 08:25 | outbound | 01632960001 | 01dd-0000-0000-000000000002 |
 | `2026-11-01 0932 4 Anything else 07700900001 [01dd-0000-0000-000000000003]` | 2026-11-01 | 09:32 | inbound | 07700900001 | 01dd-0000-0000-000000000003 |
-| `2026-11-01 0700 Direct line 01865000002 [01dd-0000-0000-000000000004]` | 2026-11-01 | 07:00 | inbound | 01865000002 | 01dd-0000-0000-000000000004 |
+| `2026-11-01 0700 Direct line 01632960102 [01dd-0000-0000-000000000004]` | 2026-11-01 | 07:00 | inbound | 01632960102 | 01dd-0000-0000-000000000004 |
 
 Titles that do not match are skipped and counted in Diagnostics.
 
@@ -37,9 +37,9 @@ Titles that do not match are skipped and counted in Diagnostics.
 
 | Raw | Normalised | Rule |
 |---|---|---|
-| `01822 850001` | `01822850001` | strip spaces |
-| `850001` | `01822850001` | six digits: prefix the home's area code (`XSOURCE_LOCAL_AREA_CODE`, default `01822`) |
-| `+441822850001` | `01822850001` | `+44` becomes `0` |
+| `01632 960001` | `01632960001` | strip spaces |
+| `960001` | `01632960001` | six digits: prefix the home's area code (`XSOURCE_LOCAL_AREA_CODE`, default `01632`) |
+| `+441632960001` | `01632960001` | `+44` becomes `0` |
 | `111` | — | three digits or fewer: never matched |
 
 ## Header fields
@@ -49,7 +49,7 @@ The body begins with these lines before the word `Transcript`:
 | Field | Example | Used for |
 |---|---|---|
 | `Call <id>` | `Call 01dd-…` | de-duplication |
-| direction line | `Sat 31 Oct 2026 11:45, outbound, called 01865000001, …, answered by <name>, talk 259s` | who made the call, length |
+| direction line | `Sat 31 Oct 2026 11:45, outbound, called 01632960101, …, answered by <name>, talk 259s` | who made the call, length |
 | `Caller type:` | `Supplier — <name> from <firm>` | contact name |
 | `Summary:` | one paragraph | outcome, price, dates |
 | `Follow-up promised:` | optional | next step |

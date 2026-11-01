@@ -167,7 +167,7 @@ The exact title pattern, header fields, number rules and examples are fixed in
 `docs/contracts/gareth-calls-v1.md`.
 
 Each transcript's title is `YYYY-MM-DD HHMM <direction or menu option> <number> [<call id>]`,
-for example `2026-10-31 1145 Outbound 01865000000 [01dd-…]`. The body begins with a header:
+for example `2026-10-31 1145 Outbound 01632960100 [01dd-…]`. The body begins with a header:
 direction, the number called or calling, who answered, talk time, a caller type (for example
 "Supplier — Sam from Example Co"), a summary, and "Follow-up promised" where there is one. Then the
 full transcript.
@@ -175,14 +175,14 @@ full transcript.
 Gareth's handling:
 
 1. **Match by title only.** Take the number from the title and normalise it: strip spaces, and
-   prefix the home's local area code (01822) to six-digit local numbers such as `852202`. Look
+   prefix the home's local area code (01632) to six-digit local numbers such as `960202`. Look
    it up against the phone numbers on open job tabs first, then the black book. Do not open a
    transcript whose number does not match.
 2. **Deduplicate by call id.** The same call can be saved more than once (one call on
    31 October 2026 was saved 33 times, five minutes apart). Treat the bracketed call id as the
    key.
 3. **Unmatched outbound business numbers** (landlines and 03/08 numbers, not mobiles) made
-   during an open job's calling stage are offered to the operator in Chat: "who was 01752…?".
+   during an open job's calling stage are offered to the operator in Chat: "who was 01632…?".
    Answering files the call and saves the number to that firm. Inbound unmatched calls are
    ignored.
 4. **Read.** For a matched call, use the summary, follow-up and transcript to propose: outcome
