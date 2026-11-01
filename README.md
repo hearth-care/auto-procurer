@@ -97,7 +97,7 @@ based on live data — not a missing implementation.
 
 Production runtime is Cloud Run jobs plus Cloud Scheduler:
 
-- `xsource watcher run --cycles 4 --interval 60` every five minutes;
+- `xsource watcher run --once` every hour (supplier replies are not urgent, and a job is billed for every second it runs, waiting included; operator, 1 Nov 2026);
 - `xsource request sync-all` nightly;
 - `xsource signals scan` daily.
 
