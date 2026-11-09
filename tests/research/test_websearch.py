@@ -144,3 +144,28 @@ def test_website_email_is_kept_only_when_the_page_quote_contains_it():
     assert find_website_email("Sparks", "sparks.example", _ContactSearcher(guessed)) is None
     none_found = {"email": None, "page_url": None, "source_quote": ""}
     assert find_website_email("Sparks", "sparks.example", _ContactSearcher(none_found)) is None
+
+
+def test_report_request_caches_system_and_tools_identically_across_calls():
+    from types import SimpleNamespace
+
+    from xsource.research.websearch import DIRECTORY_SCHEMA, AnthropicSearcher
+
+    sent = []
+
+    def create(**kwargs):
+        sent.append(kwargs)
+        block = SimpleNamespace(type="tool_use", name="report", input={"candidates": []})
+        return SimpleNamespace(content=[block])
+
+    searcher = object.__new__(AnthropicSearcher)
+    searcher.model_chain = ["claude-sonnet-5-5"]
+    searcher.client = SimpleNamespace(messages=SimpleNamespace(create=create))
+    searcher.extract("plumber in Exeter", DIRECTORY_SCHEMA)
+    searcher.extract("electrician in Truro", DIRECTORY_SCHEMA)
+
+    assert sent[0]["system"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert sent[0]["messages"] != sent[1]["messages"]
+    assert repr((sent[0]["system"], sent[0]["tools"])) == repr(
+        (sent[1]["system"], sent[1]["tools"])
+    )

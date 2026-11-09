@@ -57,8 +57,6 @@ def _draft_prompt(request: Request, supplier: Supplier, cfg: Config) -> str:
     job_summary, town, needed_by = _draft_context(request, cfg)
     return "\n".join(
         [
-            build_outreach_system_prompt(),
-            "",
             f"Request id: {request.id}",
             f"Supplier: {supplier.name}",
             f"Job summary: {job_summary}",
@@ -81,8 +79,13 @@ def build_quote_request(request: Request, supplier: Supplier, gateway=None) -> Q
     # Triage's job summary runs to a paragraph, so the fallback subject uses the trade.
     subject = f"Quote please: {request.triage.get('category') or job_summary}"
     if gateway is not None:
+        # The persona goes in its own system message so it stays an identical, cacheable
+        # prefix across every supplier asked about the same job.
         result = gateway.complete_structured(
-            [{"role": "user", "content": _draft_prompt(request, supplier, cfg)}],
+            [
+                {"role": "system", "content": build_outreach_system_prompt()},
+                {"role": "user", "content": _draft_prompt(request, supplier, cfg)},
+            ],
             _DRAFT_SCHEMA,
             role="outreach",
         )

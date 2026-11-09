@@ -124,5 +124,6 @@ def test_call_model_sends_system_prompt_top_level_without_forcing_the_tool():
     )
     assert out == {"ok": True}
     assert [m["role"] for m in sent["messages"]] == ["user"]
-    assert sent["system"].startswith("Triage rules.")
+    assert sent["system"][0]["text"].startswith("Triage rules.")
+    assert sent["system"][-1]["cache_control"] == {"type": "ephemeral"}
     assert sent["tool_choice"] == {"type": "auto"}

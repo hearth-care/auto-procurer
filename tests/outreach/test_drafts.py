@@ -79,10 +79,32 @@ def test_build_quote_request_can_use_procurement_gateway():
 
     assert draft.body == "Model-written supplier note.\n\nref r-0042"
     assert gateway.calls[0]["role"] == "outreach"
-    prompt_text = gateway.calls[0]["messages"][0]["content"]
-    assert "Never fabricate numbers" in prompt_text
-    assert "Newton Abbot" in prompt_text
-    assert "Westcountry Tree Care" in prompt_text
+    system_msg, user_msg = gateway.calls[0]["messages"]
+    assert system_msg["role"] == "system"
+    assert "Never fabricate numbers" in system_msg["content"]
+    assert user_msg["role"] == "user"
+    assert "Newton Abbot" in user_msg["content"]
+    assert "Westcountry Tree Care" in user_msg["content"]
+
+
+def test_quote_requests_for_different_suppliers_share_an_identical_persona():
+    # Per-supplier details must stay out of the system message, or the cached prefix
+    # differs for every supplier and nothing is reused.
+    request = Request(
+        id="r-0042",
+        created_at="2026-06-10T15:58:00+01:00",
+        raw_need="Fallen tree needs cutting and chipping",
+        triage={"email_vars": {"job_summary": "fallen tree", "location_town": "Newton Abbot"}},
+        constraints={"needed_by": "Friday"},
+    )
+    gateway = _Gateway()
+    for i, name in enumerate(["Westcountry Tree Care", "Dart Valley Arborists"]):
+        supplier = Supplier(id=f"s-{i}", name=name, email=f"q{i}@example.com")
+        build_quote_request(request, supplier, gateway=gateway)
+
+    first, second = (call["messages"][0] for call in gateway.calls)
+    assert first == second
+    assert "Westcountry" not in first["content"]
 
 
 def test_create_request_drafts_persists_thread_ids_without_asked_at():
@@ -224,7 +246,7 @@ def test_prompt_names_the_configured_operator(monkeypatch):
     monkeypatch.delenv("XSOURCE_OPERATOR_DISPLAY_NAME", raising=False)
     gateway = _Gateway()
     build_quote_request(_request(), _supplier(), gateway=gateway)
-    prompt = gateway.calls[0]["messages"][0]["content"]
+    prompt = "\n".join(m["content"] for m in gateway.calls[0]["messages"])
     assert "Operator first name: Gareth" in prompt and "Milo" not in prompt
 
 
