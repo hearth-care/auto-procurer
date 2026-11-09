@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime as dt
+import logging
 import os
 import sys
 from collections.abc import Sequence
@@ -49,6 +50,8 @@ from xsource.wiring import (
     build_stores,
 )
 from xsource.workbook.layout import uk_phone as _uk_phone
+
+log = logging.getLogger("xsource.cli")
 
 _APP_LABEL = "xsource"
 _UK = ZoneInfo("Europe/London")
@@ -393,7 +396,13 @@ class _AnthropicStructuredGateway:
         resp = self.client.messages.create(
             model=model,
             max_tokens=16000,
-            system="\n\n".join(system),
+            system=[
+                {
+                    "type": "text",
+                    "text": "\n\n".join(system),
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             tools=[
                 {
                     "name": "report",
@@ -404,6 +413,12 @@ class _AnthropicStructuredGateway:
             # Sonnet 5.5 rejects a forced tool_choice; the system line steers it instead.
             tool_choice={"type": "auto"},
             messages=[m for m in messages if m["role"] != "system"],
+        )
+        usage = getattr(resp, "usage", None)
+        log.info(
+            "gateway cache read=%s created=%s",
+            getattr(usage, "cache_read_input_tokens", 0),
+            getattr(usage, "cache_creation_input_tokens", 0),
         )
         for block in resp.content:
             block_any = cast(Any, block)

@@ -83,7 +83,7 @@ class AnthropicSearcher:
         resp = self.client.messages.create(
             model=model,
             max_tokens=16000,
-            system=system,
+            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
             tools=cast(
                 Any,
                 [
@@ -97,6 +97,12 @@ class AnthropicSearcher:
             ),
             tool_choice={"type": "auto"},
             messages=[{"role": "user", "content": prompt}],
+        )
+        usage = getattr(resp, "usage", None)
+        log.info(
+            "websearch cache read=%s created=%s",
+            getattr(usage, "cache_read_input_tokens", 0),
+            getattr(usage, "cache_creation_input_tokens", 0),
         )
         for block in resp.content:
             block_any = cast(Any, block)
